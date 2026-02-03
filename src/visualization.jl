@@ -32,8 +32,18 @@ function plot_slice(sol::Solution, prob::ProblemSpec, config::SolverConfig;
     end
 
     isdir(output_dir) || mkpath(output_dir)
-    p1 = heatmap(sol.x, sol.z, U'; aspect_ratio=:equal, title="u(x,z) slice")
-    p2 = heatmap(sol.x, sol.z, Uerr'; aspect_ratio=:equal, title="|u - u_exact|")
+    p1 = contourf(sol.x, sol.z, U';
+                  aspect_ratio=:equal,
+                  xlims=(-0.1, 1.1),
+                  right_margin=10Plots.mm,
+                  colorbar_formatter=:scientific,
+                  title="u(x,z) slice")
+    p2 = contourf(sol.x, sol.z, Uerr';
+                  aspect_ratio=:equal,
+                  xlims=(-0.1, 1.1),
+                  right_margin=10Plots.mm,
+                  colorbar_formatter=:scientific,
+                  title="|u - u_exact|")
 
     tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(config.M)_t$(config.tend)"
     png(p1, joinpath(output_dir, "solution_$(tag).png"))
