@@ -15,6 +15,8 @@ julia --project -e 'using Pkg; Pkg.instantiate()'
 julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --tend 1.0 --epsilon 1e-10 --alpha 1.0
 ```
 
+実行中は拡散数 `Fo` を常時出力し、`Fo > 0.5` の場合は警告を表示します。終了時に解析解との **L2誤差（絶対値）** を出力します。
+
 **コマンドライン引数**
 - `--nx`, `--ny`, `--nz`: 各方向の分割数（デフォルト: 16）
 - `--M`: Taylor 展開次数（デフォルト: 10）
@@ -22,14 +24,14 @@ julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --tend 
 - `--tend`: 反復の上限時間（デフォルト: 1.0）
 - `--epsilon`: 収束判定の相対残差閾値（デフォルト: 1e-10）
 - `--alpha`: 境界条件パラメータ（デフォルト: 1.0）
+- `--bc-order`: 境界条件の次数（`spec` または `high`、デフォルト: `spec`）
 
 **推奨設定**
 - 拡散数 `Fo = Δt(1/Δx^2 + 1/Δy^2 + 1/Δz^2)` を `0.5` 以下にする
 - 立方体格子（`nx=ny=nz=n`）では `Δt <= 0.5 / (3 n^2)` が目安
 
 **高次境界（任意）**
-- 境界精度を上げたい場合は `solve(...; bc_order=:high)` を指定
-- CLI では未対応のため、REPL から実行する
+- 境界精度を上げたい場合は `--bc-order high` を指定
 
 例:
 ```bash

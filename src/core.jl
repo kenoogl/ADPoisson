@@ -226,6 +226,31 @@ function l2_norm_interior(a::Array{T,3}, config::SolverConfig) where {T}
 end
 
 """
+    l2_error_exact(sol, prob, config)
+
+Compute absolute L2 norm of error against the analytical solution.
+"""
+function l2_error_exact(sol::Solution, prob::ProblemSpec, config::SolverConfig)
+    dx = prob.Lx / config.nx
+    dy = prob.Ly / config.ny
+    dz = prob.Lz / config.nz
+    s = 0.0
+    @inbounds for k in 1:config.nz
+        for j in 1:config.ny
+            for i in 1:config.nx
+                x = sol.x[i]
+                y = sol.y[j]
+                z = sol.z[k]
+                uex = exact_solution(x, y, z, prob.alpha)
+                u = sol.u[i + 1, j + 1, k + 1]
+                s += (u - uex)^2
+            end
+        end
+    end
+    return sqrt(s * dx * dy * dz)
+end
+
+"""
     solve(config, prob)
 
 Main solver loop using Taylor series pseudo-time stepping.
@@ -242,8 +267,9 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)
 
     dx, dy, dz = grid_spacing(config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     Fo = config.dt * (1 / dx^2 + 1 / dy^2 + 1 / dz^2)
+    @info "diffusion number" Fo=Fo
     if Fo > 0.5
-        @printf("Warning: diffusion number Fo=%.3e exceeds 0.5 (dt=%g)\n", Fo, config.dt)
+        @warn "diffusion number exceeds 0.5" Fo=Fo dt=config.dt
     end
 
     t = zero(eltype(sol.u))
@@ -264,5 +290,8 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)
         iter += 1
     end
 
-    return Solution(sol.x, sol.y, sol.z, sol.u, t, iter)
+    result = Solution(sol.x, sol.y, sol.z, sol.u, t, iter)
+    err_l2 = l2_error_exact(result, prob, config)
+    @info "L2 error (abs)" err_l2=err_l2
+    return result
 end
