@@ -101,12 +101,16 @@ end
     alpha = 1.0
     ns = get(ENV, "ADPOISSON_FULL_TEST", "0") == "1" ? [16, 32, 64] : [16, 32]
     errs = Float64[]
+    do_plot = get(ENV, "ADPOISSON_TEST_PLOT", "0") == "1"
 
     for n in ns
         prob = ProblemSpec(1.0, 1.0, 1.0, alpha, source_term, dirichlet_bc)
         dt = 0.1 / (3 * n^2)
         config = SolverConfig(n, n, n, 4, dt, 0.5, 1e-6)
         sol = solve(config, prob; bc_order=:high)
+        if do_plot
+            plot_slice(sol, prob, config)
+        end
         err = l2_error_solution(sol, prob, config)
         push!(errs, err)
     end

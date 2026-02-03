@@ -51,3 +51,8 @@ julia --project -e 'using Pkg; Pkg.test()'
 ```bash
 ADPOISSON_FULL_TEST=1 julia --project -e 'using Pkg; Pkg.test()'
 ```
+
+テスト中に可視化を出力する場合:
+```bash
+ADPOISSON_TEST_PLOT=1 julia --project -e 'using Pkg; Pkg.test()'
+```
