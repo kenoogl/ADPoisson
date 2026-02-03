@@ -1,0 +1,6 @@
+.DS_Store
+.gemini/
+*.jl.cov
+*.jl.*.cov
+*.ji
+*.mem
