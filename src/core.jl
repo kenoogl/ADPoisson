@@ -256,6 +256,7 @@ end
 Main solver loop using Taylor series pseudo-time stepping.
 """
 function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)
+    t_start = time()
     sol = initialize_solution(config, prob)
     bc = boundary_from_prob(prob)
 
@@ -267,7 +268,6 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)
 
     dx, dy, dz = grid_spacing(config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     Fo = config.dt * (1 / dx^2 + 1 / dy^2 + 1 / dz^2)
-    @info "diffusion number" Fo=Fo
     if Fo > 0.5
         @warn "diffusion number exceeds 0.5" Fo=Fo dt=config.dt
     end
@@ -292,6 +292,7 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)
 
     result = Solution(sol.x, sol.y, sol.z, sol.u, t, iter)
     err_l2 = l2_error_exact(result, prob, config)
-    @info "L2 error (abs)" err_l2=err_l2
+    runtime = time() - t_start
+    @info "summary" Fo=Fo err_l2=@sprintf("%.3e", err_l2) steps=iter runtime_s=@sprintf("%.3f", runtime)
     return result
 end
