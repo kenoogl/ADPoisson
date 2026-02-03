@@ -18,7 +18,12 @@
   - Taylor展開次数は $M=10$（$m=0..M$）まで考える
   - 高次導関数の計算はADburgersの実装を参考にする
   - 3D Poisson式に対するTaylor級数展開の導出
-  - ソース項fの扱いの検討
+  - ソース項fの扱いの検討。コード実装ではfを考慮する。実際の問題ではf=0として実行
+  - 擬似時間の停止条件は残差 $r=Lu-f$ を用いる（内点のみ評価）。相対残差 $\|r\|_2 / \max(\|f\|_2, 1) \le \epsilon$。$\epsilon$ は指定可能とする。デフォルト値: 1e-10
+  - 終了条件は「残差が閾値を満たす」または「$t \ge t_{\text{end}}$」のいずれか早い方
+  - 擬似時間刻みの条件は拡散数で管理する（推奨条件として採用）。拡散数（$\nu=1$）は
+    $$Fo=\Delta t\left(\frac{1}{\Delta x^2}+\frac{1}{\Delta y^2}+\frac{1}{\Delta z^2}\right)$$
+    と定義し、明示的安定性の推奨条件として $Fo \le 1/2$ を満たす
 - [ ] **Taylor級数漸化式（3D Poisson, 擬似時間）**
   - 詳細は `/Users/Daily/Development/ADTM/ADPoisson漸化式.md` に準拠
   - Poisson: $\nabla^2 u = f$ を擬似時間で $u_t = f-\nabla^2 u$ として解く
@@ -51,6 +56,7 @@
       - y-max: $(u_{i,N_y+2,k})_0=(u_{i,N_y+1,k})_0-\Delta y\,h_{yhi}[i-1,k-1]$, $(u_{i,N_y+2,k})_m=(u_{i,N_y+1,k})_m$
       - z-min: $(u_{i,j,1})_0=(u_{i,j,2})_0+\Delta z\,h_{zlo}[i-1,j-1]$, $(u_{i,j,1})_m=(u_{i,j,2})_m$
       - z-max: $(u_{i,j,N_z+2})_0=(u_{i,j,N_z+1})_0-\Delta z\,h_{zhi}[i-1,j-1]$, $(u_{i,j,N_z+2})_m=(u_{i,j,N_z+1})_m$
+  - Neumann境界は将来拡張として扱い、本仕様での必須実装はDirichletのみ（Neumannの6面式は参考記載）
 - [ ] **検証機能**
   - 解析解の定義（Method of Manufactured Solutions等）
   - 数値解と解析解の比較は、相対 $L2$ 誤差 $\|u-u_{\text{exact}}\|_2/\|u_{\text{exact}}\|_2 \le 10^{-3}$ を満たすこと
@@ -59,17 +65,23 @@
   - 3D cell-centered 配置で ghost 1層を含む配列として保持し、境界条件はghost層に反映して適用する
   - 配列サイズは $(N_x+2, N_y+2, N_z+2)$
   - 内部点の添字は $i=2..N_x+1,\ j=2..N_y+1,\ k=2..N_z+1$
+  - cell-centeredの物理座標は $x_i=(i-1.5)\Delta x,\ y_j=(j-1.5)\Delta y,\ z_k=(k-1.5)\Delta z$
 - **領域・境界条件・初期条件**
   - 計算領域: $[0,1]^3$
   - 境界条件（Dirichlet）:
-    - $z=0$: $\phi(x,y,0)= \alpha \sin(\pi x)\sin(\pi y)$
-    - $z=1$: $\phi(x,y,1)= \sin(\pi x)\sin(\pi y)$
-    - その他境界: $\phi(x,y,z)=0$
+    - $z=0$: $u(x,y,0)= \alpha \sin(\pi x)\sin(\pi y)$
+    - $z=1$: $u(x,y,1)= \sin(\pi x)\sin(\pi y)$
+    - その他境界: $u(x,y,z)=0$
+  - 将来拡張としてNeumann境界も実装する
   - $\alpha$ は難易度制御パラメータ（$z$ 方向の勾配の大きさに対応）。通常は $\alpha=1$
   - 初期条件: $u(x,y,z,0)=0$
-  - 合否基準: 格子精細化で 2次精度が確認できること
-  - 解析解（$f=0$ の検証ケース）:
+  - 評価格子サイズ: $N_x=N_y=N_z=16, 32, 64$ をコマンドラインパラメータで指定
+  - 合否基準: 格子精細化で 2次精度が確認できること（$N_x=16/32/64$ で収束率2を確認）
+  - 解析解（$f=0$ かつ時間一定の検証ケース）:
     $$u(x,y,z)=\frac{\sin(\pi x)\sin(\pi y)}{\sinh(\sqrt{2}\pi)}\Bigl(\sinh(\sqrt{2}\pi z)+\alpha\,\sinh(\sqrt{2}\pi(1-z))\Bigr)$$
+  - 最大誤差も評価する（合否判定には使わず参考値として出力）
+  - ghost更新は面のみで、エッジ、コーナーは更新しない（評価・出力も内点のみ）
+  - $\alpha$ の値はコマンドラインで指定。デフォルト1.0
 
 - Julia実装
   - パラメータはコマンドラインで指定
