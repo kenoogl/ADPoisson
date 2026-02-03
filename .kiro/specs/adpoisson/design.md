@@ -18,7 +18,7 @@
 ### Goals
 - Taylor級数展開（$M=10$次）による擬似時間積分ソルバーの実装
 - 解析解（Method of Manufactured Solutionsまたは具体的境界値問題）との比較による精度検証
-- コマンドラインからのパラメータ制御 ($N_x,N_y,N_z,M,\Delta t,t_{\text{end}},\epsilon,\alpha$)
+- コマンドラインからのパラメータ制御 ($N_x,N_y,N_z,M,\Delta t,t_{\text{end}},\epsilon,\alpha,\text{bc-order}$)
 
 ### Non-Goals
 - 高速化（並列化・GPU化）は現時点での主目的ではない（将来拡張）

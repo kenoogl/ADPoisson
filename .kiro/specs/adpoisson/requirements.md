@@ -96,7 +96,7 @@
 
 - Julia実装
   - パラメータはコマンドラインで指定
-  - $N_x, N_y, N_z$, Taylor展開次数 $M$, $\Delta t$, $t_{\text{end}}$
+  - $N_x, N_y, N_z$, Taylor展開次数 $M$, $\Delta t$, $t_{\text{end}}$, 境界条件次数（`spec`/`high`）
   - 可視化は $y=0.5$ の断面（XZ面）をヒートマップ/コンターで表示し、解析解との誤差も可視化
 
 ## 非機能要件
