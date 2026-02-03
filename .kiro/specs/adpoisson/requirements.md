@@ -10,7 +10,7 @@
 - [ ] **三次元ポアソン方程式ソルバー**
   - 未知変数: スカラー場 $u(x, y, z, t)$ （※tは擬似時間で時間発展形式で扱う）
   - ポアソン方程式は通常時間独立であるが、本プロジェクトでは時間発展形式で扱う
-  - 方程式: $\frac{\partial u}{\partial t} = f-\nabla^2 u$ を想定（擬似時間）
+  - 方程式: $\frac{\partial u}{\partial t} = \nabla^2 u - f$ を想定（擬似時間）
   - 空間離散化: 差分法二次精度中心差分
   - 検証ケースでは $f=0$ を用いるが、一般性のために $f$ は残す
 - [ ] **時間積分手法**
@@ -26,7 +26,7 @@
     と定義し、明示的安定性の推奨条件として $Fo \le 1/2$ を満たす
 - [ ] **Taylor級数漸化式（3D Poisson, 擬似時間）**
   - 詳細は `/Users/Daily/Development/ADTM/ADPoisson漸化式.md` に準拠
-  - Poisson: $\nabla^2 u = f$ を擬似時間で $u_t = f-\nabla^2 u$ として解く
+  - Poisson: $\nabla^2 u = f$ を擬似時間で $u_t = \nabla^2 u - f$ として解く
   - 3D cell-centered、Julia 1-origin、ghost 1層を前提
   - Taylor係数: $(u_{i,j,k})_m=\frac{1}{m!}\left.\frac{\partial^m u_{i,j,k}}{\partial t^m}\right|_{t=t_0}$
   - 更新: $u_{i,j,k}(t_0+\Delta t)\approx \sum_{m=0}^{M}(u_{i,j,k})_m(\Delta t)^m$
@@ -35,12 +35,15 @@
     \frac{u_{i,j+1,k}-2u_{i,j,k}+u_{i,j-1,k}}{\Delta y^2}+
     \frac{u_{i,j,k+1}-2u_{i,j,k}+u_{i,j,k-1}}{\Delta z^2}$$
   - 漸化式（内点）:
-    $$(u_{i,j,k})_{m+1}=\frac{1}{m+1}\Bigl((f_{i,j,k})_m-(L(u_m))_{i,j,k}\Bigr)$$
+    $$(u_{i,j,k})_{m+1}=\frac{1}{m+1}\Bigl((L(u_m))_{i,j,k}-(f_{i,j,k})_m\Bigr)$$
     $f$ が擬似時間一定なら $(f)_0=f,\ (f)_m=0\ (m\ge1)$ とし、$m\ge1$ では
-    $$(u_{i,j,k})_{m+1}= -\frac{1}{m+1}(L(u_m))_{i,j,k}$$
+    $$(u_{i,j,k})_{m+1}= \frac{1}{m+1}(L(u_m))_{i,j,k}$$
     なお $f$ の時間依存は将来拡張とする
   - 境界条件（ghost 係数式）:
     - Dirichlet $u=g$: $m=0$ で $u_{\text{ghost}}=2g-u_{\text{adj}}$、$m\ge1$ で $u_{\text{ghost}}=-u_{\text{adj}}$
+    - **高次境界（任意, m=0 のみ）**: 境界近傍の精度改善のため、$m=0$ のみ 3次外挿を許可する。
+      - 一般式: $u_{\text{ghost}}=\frac{16}{5}g-3u_1+u_2-\frac{1}{5}u_3$
+      - ここで $u_1,u_2,u_3$ は境界から内側方向に並ぶ 1,2,3 番目の内点値
     - Neumann $\partial u/\partial n=h$: $m=0$ で $u_{\text{ghost}}=u_{\text{adj}}\pm\Delta n\,h$、$m\ge1$ で $u_{\text{ghost}}=u_{\text{adj}}$
   - 6面の ghost 係数式（Julia 1-origin）:
     - Dirichlet（面データ: `g_xlo/g_xhi/g_ylo/g_yhi/g_zlo/g_zhi`）
@@ -50,6 +53,13 @@
       - y-max: $(u_{i,N_y+2,k})_0=2g_{yhi}[i-1,k-1]-(u_{i,N_y+1,k})_0$, $(u_{i,N_y+2,k})_m=-(u_{i,N_y+1,k})_m$
       - z-min: $(u_{i,j,1})_0=2g_{zlo}[i-1,j-1]-(u_{i,j,2})_0$, $(u_{i,j,1})_m=-(u_{i,j,2})_m$
       - z-max: $(u_{i,j,N_z+2})_0=2g_{zhi}[i-1,j-1]-(u_{i,j,N_z+1})_0$, $(u_{i,j,N_z+2})_m=-(u_{i,j,N_z+1})_m$
+      - **高次境界（任意, m=0 のみ）**:
+        - x-min: $(u_{1,j,k})_0=\frac{16}{5}g_{xlo}[j-1,k-1]-3(u_{2,j,k})_0+(u_{3,j,k})_0-\frac{1}{5}(u_{4,j,k})_0$
+        - x-max: $(u_{N_x+2,j,k})_0=\frac{16}{5}g_{xhi}[j-1,k-1]-3(u_{N_x+1,j,k})_0+(u_{N_x,j,k})_0-\frac{1}{5}(u_{N_x-1,j,k})_0$
+        - y-min: $(u_{i,1,k})_0=\frac{16}{5}g_{ylo}[i-1,k-1]-3(u_{i,2,k})_0+(u_{i,3,k})_0-\frac{1}{5}(u_{i,4,k})_0$
+        - y-max: $(u_{i,N_y+2,k})_0=\frac{16}{5}g_{yhi}[i-1,k-1]-3(u_{i,N_y+1,k})_0+(u_{i,N_y,k})_0-\frac{1}{5}(u_{i,N_y-1,k})_0$
+        - z-min: $(u_{i,j,1})_0=\frac{16}{5}g_{zlo}[i-1,j-1]-3(u_{i,j,2})_0+(u_{i,j,3})_0-\frac{1}{5}(u_{i,j,4})_0$
+        - z-max: $(u_{i,j,N_z+2})_0=\frac{16}{5}g_{zhi}[i-1,j-1]-3(u_{i,j,N_z+1})_0+(u_{i,j,N_z})_0-\frac{1}{5}(u_{i,j,N_z-1})_0$
     - Neumann（面データ: `h_xlo/h_xhi/h_ylo/h_yhi/h_zlo/h_zhi`）
       - x-min: $(u_{1,j,k})_0=(u_{2,j,k})_0+\Delta x\,h_{xlo}[j-1,k-1]$, $(u_{1,j,k})_m=(u_{2,j,k})_m$
       - x-max: $(u_{N_x+2,j,k})_0=(u_{N_x+1,j,k})_0-\Delta x\,h_{xhi}[j-1,k-1]$, $(u_{N_x+2,j,k})_m=(u_{N_x+1,j,k})_m$

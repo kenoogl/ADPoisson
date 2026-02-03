@@ -11,7 +11,7 @@
 ---
 
 ## 概要
-**目的**: 三次元ポアソン方程式 $\nabla^2 u = f$ を、擬似時間発展方程式 $\frac{\partial u}{\partial t} = f - \nabla^2 u$ とみなし、Taylor級数法を用いて定常解を求めるソルバーを提供する。
+**目的**: 三次元ポアソン方程式 $\nabla^2 u = f$ を、擬似時間発展方程式 $\frac{\partial u}{\partial t} = \nabla^2 u - f$ とみなし、Taylor級数法を用いて定常解を求めるソルバーを提供する。
 **ユーザー**: 数値流体力学の研究者、特に高次精度時間積分や自動微分に関心のある開発者。
 **インパクト**: 3Dポアソン問題に対する高精度かつAD適用可能なソルバーの基盤となる。
 
@@ -152,7 +152,7 @@ end
 
 #### 関数シグネチャ（主要）
 ```julia
-apply_bc!(u::Array{T,3}, bc::BoundaryConditions, m::Int, config::SolverConfig) where {T}
+apply_bc!(u::Array{T,3}, bc::BoundaryConditions, m::Int, config::SolverConfig; order=:spec) where {T}
 laplacian!(Lu::Array{T,3}, u::Array{T,3}, config::SolverConfig) where {T}
 compute_residual!(r::Array{T,3}, u::Array{T,3}, f::Array{T,3}, config::SolverConfig) where {T}
 
@@ -174,6 +174,11 @@ horner_update!(u_new::Array{T,3}, coeffs::TaylorArrays3D{T}, dt::T, M::Int) wher
   - これらを使い回し（ping-pong）、逐次的に `u_sum` に加算していくことで、必要な3D配列を最小限（2~3枚）に抑える。
 - **Ghost Cell更新 (`boundary.jl`)**: 各次数 $m$ の計算直後に境界条件を適用する。
   - ghost更新は面のみ（エッジ・コーナーは更新しない）
+  - **高次境界（任意）**: `order=:high` の場合、$m=0$ のみ 3次外挿を用いて精度改善。
+    - 例（x-min）: $u_{1}=\frac{16}{5}g-3u_{2}+u_{3}-\frac{1}{5}u_{4}$
+    - x-max, y-min/y-max, z-min/z-max も同様に内側3点を用いる
+    - $m\ge1$ は仕様通り $u_{\text{ghost}}=-u_{\text{adj}}$
+    - `nx,ny,nz>=3` を満たす場合にのみ使用可能
 - **終了条件**: 相対残差 $\|r\|_2 / \max(\|f\|_2, 1) \le \epsilon$ または $t \ge t_{\text{end}}$ のいずれか早い方。
 
 #### メモリ効率（Taylor係数の保持）
