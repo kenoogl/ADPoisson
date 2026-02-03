@@ -16,7 +16,7 @@
   - `TaylorBuffers3D` の定義 (bufA, bufB, acc)
   - `TaylorArrays3D` の定義（検証用途のみ、任意）
   - AD対応の型パラメトリック化（`T<:Real`）を適用
-  - `SolverConfig` の定義 (グリッド数, M, dt, tend, epsilon)
+  - `SolverConfig` の定義 (グリッド数, M, dt, max_steps, epsilon)
   - `Solution` の定義 (物理座標, u配列)
   - _Requirements: コア機能-ソルバー, 計算格子_
   - _Design: BoundaryConditions, TaylorBuffers3D, TaylorArrays3D_
@@ -73,12 +73,12 @@
   - `plot_slice(sol, ...)` 実装 (XZ面)
   - 解析解との差分（|u-u_exact|）の可視化
   - `results/` ディレクトリを作成して保存
-  - 保存の命名規則: `solution_nx{nx}_ny{ny}_nz{nz}_M{M}_t{tend}.png`
+  - 保存の命名規則: `solution_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
   - depends: [8]
   - _Requirements: Julia実装-可視化_
 - [x] 10. CLIと実行スクリプト (`scripts/main.jl`)
   - コマンドライン引数処理
-  - `--nx --ny --nz --M --dt --tend --epsilon --alpha` に対応
+  - `--nx --ny --nz --M --dt --max-steps --epsilon --alpha` に対応
   - `factory.jl` を利用して問題生成
   - depends: [7, 8]
   - _Requirements: Julia実装-パラメータ_

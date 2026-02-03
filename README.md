@@ -12,7 +12,7 @@ julia --project -e 'using Pkg; Pkg.instantiate()'
 
 **実行**
 ```bash
-julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --tend 1.0 --epsilon 1e-10 --alpha 1.0
+julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-10 --alpha 1.0
 ```
 
 終了時に `Fo`、解析解との **L2誤差（絶対値）**、ステップ数、実行時間をまとめて出力します。`Fo > 0.5` の場合は警告を表示します。
@@ -21,8 +21,9 @@ julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --tend 
 - `--nx`, `--ny`, `--nz`: 各方向の分割数（デフォルト: 16）
 - `--M`: Taylor 展開次数（デフォルト: 10）
 - `--dt`: 擬似時間刻み幅（デフォルト: 1e-4）
-- `--tend`: 反復の上限時間（デフォルト: 1.0）
+- `--max-steps`: 擬似時間積分の最大ステップ数（デフォルト: 10000）
 - `--epsilon`: 収束判定の相対残差閾値（デフォルト: 1e-10）
+  - 相対残差は $\|r\|_2 / \max(\|f\|_2, 1)$（$r=Lu-f$、内点のみ評価）
 - `--alpha`: 境界条件パラメータ（デフォルト: 1.0）
 - `--bc-order`: 境界条件の次数（`spec` または `high`、デフォルト: `spec`）
 
@@ -35,16 +36,25 @@ julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --tend 
 
 例:
 ```bash
-julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); config=SolverConfig(n,n,n,4,dt,0.5,1e-6); prob,_=make_problem(config; alpha=1.0); sol=solve(config, prob; bc_order=:high)'
+julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); max_steps=Int(ceil(0.5/dt)); config=SolverConfig(n,n,n,4,dt,max_steps,1e-6); prob,_=make_problem(config; alpha=1.0); sol=solve(config, prob; bc_order=:high)'
 ```
 
 出力は `results/` に保存されます:
-- `solution_nx{nx}_ny{ny}_nz{nz}_M{M}_t{tend}.png`
-- `error_nx{nx}_ny{ny}_nz{nz}_M{M}_t{tend}.png`
+- `solution_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
+- `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
 
 **テスト**
 ```bash
 julia --project -e 'using Pkg; Pkg.test()'
+```
+
+デフォルトのテストは **問題を解いて精度確認** のみを実行します。
+（`solver_error` で擬似時間ソルバを実行し、解析解との相対 L2 誤差を評価）
+テストで使用する `dt` と `max_steps` は `scripts/main.jl` のデフォルト値に一致します。
+
+実装確認（`laplacian!`, `taylor_step!`, `convergence_order`, `problems`）を行う場合:
+```bash
+ADPOISSON_IMPL_TEST=1 julia --project -e 'using Pkg; Pkg.test()'
 ```
 
 `N=64` まで含めたフルテストを行う場合:

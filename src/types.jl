@@ -59,8 +59,29 @@ struct SolverConfig{T<:Real}
     nz::Int
     M::Int
     dt::T
-    tend::T
+    max_steps::Int
     epsilon::T
+end
+
+const DEFAULT_CLI_OPTS = Dict{String,Any}(
+    "nx" => 16,
+    "ny" => 16,
+    "nz" => 16,
+    "M" => 10,
+    "dt" => 2e-4,
+    "max_steps" => 10000,
+    "epsilon" => 1e-10,
+    "alpha" => 1.0,
+    "bc_order" => "spec",
+)
+
+"""
+    default_cli_options()
+
+Return a fresh dictionary of CLI default options.
+"""
+function default_cli_options()
+    return Dict(k => v for (k, v) in DEFAULT_CLI_OPTS)
 end
 
 """

@@ -272,12 +272,11 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)
         @warn "diffusion number exceeds 0.5" Fo=Fo dt=config.dt
     end
 
-    t = zero(eltype(sol.u))
     iter = 0
     fnorm = l2_norm_interior(f, config)
     denom = max(fnorm, one(fnorm))
 
-    while t < config.tend
+    for step in 1:config.max_steps
         apply_bc!(sol.u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
         compute_residual!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
         rnorm = l2_norm_interior(r, config) / denom
@@ -286,13 +285,13 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)
         end
 
         taylor_series_update!(sol.u, buffers, f, bc, config, prob; bc_order=bc_order)
-        t += config.dt
-        iter += 1
+        iter = step
     end
 
+    t = config.dt * iter
     result = Solution(sol.x, sol.y, sol.z, sol.u, t, iter)
     err_l2 = l2_error_exact(result, prob, config)
     runtime = time() - t_start
-    @info "summary" Fo=Fo err_l2=@sprintf("%.3e", err_l2) steps=iter runtime_s=@sprintf("%.3f", runtime)
+    @info "summary" Fo=Fo dt=config.dt err_l2=@sprintf("%.3e", err_l2) steps=iter runtime_s=@sprintf("%.3f", runtime)
     return result
 end

@@ -45,7 +45,7 @@ function plot_slice(sol::Solution, prob::ProblemSpec, config::SolverConfig;
                   colorbar_formatter=:scientific,
                   title="|u - u_exact|")
 
-    tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(config.M)_t$(config.tend)"
+    tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(config.M)_steps$(sol.iter)"
     png(p1, joinpath(output_dir, "solution_$(tag).png"))
     png(p2, joinpath(output_dir, "error_$(tag).png"))
     return p1, p2

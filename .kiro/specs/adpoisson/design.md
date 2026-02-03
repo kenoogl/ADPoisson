@@ -18,7 +18,7 @@
 ### Goals
 - Taylor級数展開（$M=10$次）による擬似時間積分ソルバーの実装
 - 解析解（Method of Manufactured Solutionsまたは具体的境界値問題）との比較による精度検証
-- コマンドラインからのパラメータ制御 ($N_x,N_y,N_z,M,\Delta t,t_{\text{end}},\epsilon,\alpha,\text{bc-order}$)
+- コマンドラインからのパラメータ制御 ($N_x,N_y,N_z,M,\Delta t,\text{max\_steps},\epsilon,\alpha,\text{bc-order}$)
 
 ### Non-Goals
 - 高速化（並列化・GPU化）は現時点での主目的ではない（将来拡張）
@@ -123,7 +123,7 @@ struct SolverConfig{T<:Real}
     nx::Int; ny::Int; nz::Int
     M::Int         # Taylor展開次数
     dt::T
-    tend::T
+    max_steps::Int
     epsilon::T # 収束判定閾値（相対残差）
 end
 ```
@@ -180,7 +180,7 @@ horner_update!(u_new::Array{T,3}, coeffs::TaylorArrays3D{T}, dt::T, M::Int) wher
     - $m\ge1$ は仕様通り $u_{\text{ghost}}=-u_{\text{adj}}$
     - `nx,ny,nz>=3` を満たす場合にのみ使用可能
   - `solve(...; bc_order=:high)` で高次境界を有効化する
-- **終了条件**: 相対残差 $\|r\|_2 / \max(\|f\|_2, 1) \le \epsilon$ または $t \ge t_{\text{end}}$ のいずれか早い方。
+- **終了条件**: 相対残差 $\|r\|_2 / \max(\|f\|_2, 1) \le \epsilon$ または反復回数が最大ステップ数に到達した時点の早い方（最大ステップ数のデフォルトは 10000）。
 
 #### メモリ効率（Taylor係数の保持）
 ADburgersでは `TaylorArrays` で全次数の係数を保持するが、3Dではメモリが支配的になるため、**係数を逐次生成し、保存せずに和に加算する**方式を採用する。
@@ -216,7 +216,7 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 
 ### 4. 可視化 (`src/visualization.jl`)
 結果 `Solution` を受け取り、指定された断面 ($y=0.5$等) の分布図と誤差図を描画し、PNG保存する。
-出力先は `results/` とし、命名は `solution_nx{nx}_ny{ny}_nz{nz}_M{M}_t{tend}.png` を基本とする。
+出力先は `results/` とし、命名は `solution_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png` を基本とする。
 
 ## データモデル
 - **グリッド**: Cell-centered。インデックス $i=2 \dots N_x+1$ が内点。
@@ -226,9 +226,9 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
   - `make_grid` の戻り値も内点のみとする
 
 ## CLI引数（scripts/main.jl）
-- 形式: `julia scripts/main.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --tend=1.0 --epsilon=1e-10 --alpha=1.0`
+- 形式: `julia scripts/main.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --max-steps=10000 --epsilon=1e-10 --alpha=1.0`
 - 必須: `--nx,--ny,--nz`
-- 任意: `--M,--dt,--tend,--epsilon,--alpha`（デフォルトは requirements.md に準拠）
+- 任意: `--M,--dt,--max-steps,--epsilon,--alpha`（デフォルトは requirements.md に準拠）
 
 ## エラーハンドリング
 - パラメータチェック: $N_x, N_y, N_z > 0$, $M \ge 1$ 等。
