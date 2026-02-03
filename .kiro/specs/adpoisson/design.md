@@ -141,7 +141,7 @@ end
 
 ### 2. コアアルゴリズム (`src/core.jl`, `src/boundary.jl`)
 
-#### `solve(config::SolverConfig, prob::ProblemSpec)`
+#### `solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)`
 1. グリッド初期化
 2. 初期条件設定 ($u=0$)
 3. 時間ループ
@@ -179,6 +179,7 @@ horner_update!(u_new::Array{T,3}, coeffs::TaylorArrays3D{T}, dt::T, M::Int) wher
     - x-max, y-min/y-max, z-min/z-max も同様に内側3点を用いる
     - $m\ge1$ は仕様通り $u_{\text{ghost}}=-u_{\text{adj}}$
     - `nx,ny,nz>=3` を満たす場合にのみ使用可能
+  - `solve(...; bc_order=:high)` で高次境界を有効化する
 - **終了条件**: 相対残差 $\|r\|_2 / \max(\|f\|_2, 1) \le \epsilon$ または $t \ge t_{\text{end}}$ のいずれか早い方。
 
 #### メモリ効率（Taylor係数の保持）

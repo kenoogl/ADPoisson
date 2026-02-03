@@ -23,6 +23,19 @@ julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --tend 
 - `--epsilon`: 収束判定の相対残差閾値（デフォルト: 1e-10）
 - `--alpha`: 境界条件パラメータ（デフォルト: 1.0）
 
+**推奨設定**
+- 拡散数 `Fo = Δt(1/Δx^2 + 1/Δy^2 + 1/Δz^2)` を `0.5` 以下にする
+- 立方体格子（`nx=ny=nz=n`）では `Δt <= 0.5 / (3 n^2)` が目安
+
+**高次境界（任意）**
+- 境界精度を上げたい場合は `solve(...; bc_order=:high)` を指定
+- CLI では未対応のため、REPL から実行する
+
+例:
+```bash
+julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); config=SolverConfig(n,n,n,4,dt,0.5,1e-6); prob,_=make_problem(config; alpha=1.0); sol=solve(config, prob; bc_order=:high)'
+```
+
 出力は `results/` に保存されます:
 - `solution_nx{nx}_ny{ny}_nz{nz}_M{M}_t{tend}.png`
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_t{tend}.png`
