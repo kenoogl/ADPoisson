@@ -3,7 +3,7 @@
 using ADPoisson
 
 function parse_args(args)
-    opts = Dict{String,Float64}()
+    opts = Dict{String,Any}()
     opts["nx"] = 16
     opts["ny"] = 16
     opts["nz"] = 16
@@ -12,6 +12,7 @@ function parse_args(args)
     opts["tend"] = 1.0
     opts["epsilon"] = 1e-10
     opts["alpha"] = 1.0
+    opts["bc_order"] = "spec"
 
     i = 1
     while i <= length(args)
@@ -20,7 +21,11 @@ function parse_args(args)
             if i == length(args)
                 error("Missing value for --$key")
             end
-            opts[key] = parse(Float64, args[i + 1])
+            if key == "bc-order" || key == "bc_order"
+                opts["bc_order"] = args[i + 1]
+            else
+                opts[key] = parse(Float64, args[i + 1])
+            end
             i += 2
         else
             i += 1
@@ -34,7 +39,8 @@ function main()
     config = SolverConfig(Int(opts["nx"]), Int(opts["ny"]), Int(opts["nz"]),
                           Int(opts["M"]), opts["dt"], opts["tend"], opts["epsilon"])
     prob, _ = make_problem(config; alpha=opts["alpha"])
-    sol = solve(config, prob)
+    bc_order = Symbol(opts["bc_order"])
+    sol = solve(config, prob; bc_order=bc_order)
     plot_slice(sol, prob, config)
     @info "done" t=sol.t iter=sol.iter
 end
