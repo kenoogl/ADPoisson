@@ -251,6 +251,72 @@ function l2_error_exact(sol::Solution, prob::ProblemSpec, config::SolverConfig)
 end
 
 """
+    exact_solution_array(sol, prob, config)
+
+Precompute exact solution on interior points.
+"""
+function exact_solution_array(sol::Solution, prob::ProblemSpec, config::SolverConfig)
+    uex = Array{eltype(sol.u)}(undef, config.nx, config.ny, config.nz)
+    @inbounds for k in 1:config.nz
+        for j in 1:config.ny
+            for i in 1:config.nx
+                uex[i, j, k] = exact_solution(sol.x[i], sol.y[j], sol.z[k], prob.alpha)
+            end
+        end
+    end
+    return uex
+end
+
+"""
+    l2_error_exact_precomputed(u, uex, prob, config)
+
+Compute absolute L2 norm of error using precomputed exact solution.
+"""
+function l2_error_exact_precomputed(u::Array{T,3}, uex::Array{T,3},
+                                    prob::ProblemSpec, config::SolverConfig) where {T}
+    dx = prob.Lx / config.nx
+    dy = prob.Ly / config.ny
+    dz = prob.Lz / config.nz
+    s = zero(T)
+    @inbounds for k in 1:config.nz
+        for j in 1:config.ny
+            for i in 1:config.nx
+                diff = u[i + 1, j + 1, k + 1] - uex[i, j, k]
+                s += diff^2
+            end
+        end
+    end
+    return sqrt(s * dx * dy * dz)
+end
+
+"""
+    error_stats_precomputed(u, uex, prob, config)
+
+Compute absolute L2 norm and max error using precomputed exact solution.
+"""
+function error_stats_precomputed(u::Array{T,3}, uex::Array{T,3},
+                                 prob::ProblemSpec, config::SolverConfig) where {T}
+    dx = prob.Lx / config.nx
+    dy = prob.Ly / config.ny
+    dz = prob.Lz / config.nz
+    s = zero(T)
+    err_max = zero(T)
+    @inbounds for k in 1:config.nz
+        for j in 1:config.ny
+            for i in 1:config.nx
+                diff = u[i + 1, j + 1, k + 1] - uex[i, j, k]
+                s += diff^2
+                ad = abs(diff)
+                if ad > err_max
+                    err_max = ad
+                end
+            end
+        end
+    end
+    return sqrt(s * dx * dy * dz), err_max
+end
+
+"""
     solve(config, prob)
 
 Main solver loop using Taylor series pseudo-time stepping.
@@ -265,6 +331,7 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)
 
     buffers = TaylorBuffers3D(similar(sol.u), similar(sol.u), similar(sol.u))
     r = similar(sol.u)
+    u_exact = exact_solution_array(sol, prob, config)
 
     dx, dy, dz = grid_spacing(config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     Fo = config.dt * (1 / dx^2 + 1 / dy^2 + 1 / dz^2)
@@ -273,25 +340,38 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)
     end
 
     iter = 0
-    fnorm = l2_norm_interior(f, config)
-    denom = max(fnorm, one(fnorm))
+    apply_bc!(sol.u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
+    compute_residual!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+    r0 = l2_norm_interior(r, config)
+    denom = max(r0, one(r0))
+    history = IOBuffer()
+    println(history, "# step err_l2 res_l2")
 
-    for step in 1:config.max_steps
+    while true
         apply_bc!(sol.u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
         compute_residual!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-        rnorm = l2_norm_interior(r, config) / denom
-        if rnorm <= config.epsilon
+        res_l2 = l2_norm_interior(r, config)
+        rnorm = res_l2 / denom
+        err_l2 = l2_error_exact_precomputed(sol.u, u_exact, prob, config)
+        @printf(history, "%d %.6e %.6e\n", iter, err_l2, rnorm)
+        if rnorm <= config.epsilon || iter >= config.max_steps
             break
         end
-
         taylor_series_update!(sol.u, buffers, f, bc, config, prob; bc_order=bc_order)
-        iter = step
+        iter += 1
     end
 
     t = config.dt * iter
     result = Solution(sol.x, sol.y, sol.z, sol.u, t, iter)
-    err_l2 = l2_error_exact(result, prob, config)
+    err_l2, err_max = error_stats_precomputed(result.u, u_exact, prob, config)
+    output_dir = "results"
+    isdir(output_dir) || mkpath(output_dir)
+    tag = "nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_M$(config.M)_steps$(iter)"
+    history_path = joinpath(output_dir, "history_$(tag).txt")
+    open(history_path, "w") do io
+        write(io, String(take!(history)))
+    end
     runtime = time() - t_start
-    @info "summary" Fo=Fo dt=config.dt err_l2=@sprintf("%.3e", err_l2) steps=iter runtime_s=@sprintf("%.3f", runtime)
+    @info "summary" Fo=Fo dt=config.dt err_l2=@sprintf("%.3e", err_l2) err_max=@sprintf("%.3e", err_max) steps=iter runtime_s=@sprintf("%.3f", runtime)
     return result
 end

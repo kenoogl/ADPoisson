@@ -124,7 +124,7 @@ struct SolverConfig{T<:Real}
     M::Int         # Taylor展開次数
     dt::T
     max_steps::Int
-    epsilon::T # 収束判定閾値（相対残差）
+    epsilon::T # 収束判定閾値（相対残差、基準は初期残差）
 end
 ```
 
@@ -145,10 +145,13 @@ end
 1. グリッド初期化
 2. 初期条件設定 ($u=0$)
 3. 時間ループ
-    - 残差計算: $r=Lu-f$（内点のみ、相対残差で評価）
+    - 残差計算: $r=Lu-f$（内点のみ、初期残差で相対化）
     - Taylor係数計算 (再帰的定義)
     - 解更新
 4. 結果返却
+   - まとめて `Fo`, `dt`, `err_l2`, `err_max`, `steps`, `runtime` を表示
+5. 擬似時間ステップ履歴を `results/` に保存（`history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`）
+   - 出力列: `step`, `err_l2`, `res_l2`（`res_l2` は初期残差で相対化）
 
 #### 関数シグネチャ（主要）
 ```julia
@@ -180,7 +183,7 @@ horner_update!(u_new::Array{T,3}, coeffs::TaylorArrays3D{T}, dt::T, M::Int) wher
     - $m\ge1$ は仕様通り $u_{\text{ghost}}=-u_{\text{adj}}$
     - `nx,ny,nz>=3` を満たす場合にのみ使用可能
   - `solve(...; bc_order=:high)` で高次境界を有効化する
-- **終了条件**: 相対残差 $\|r\|_2 / \max(\|f\|_2, 1) \le \epsilon$ または反復回数が最大ステップ数に到達した時点の早い方（最大ステップ数のデフォルトは 10000）。
+- **終了条件**: 相対残差 $\|r\|_2 / \max(\|r_0\|_2, 1) \le \epsilon$（$r_0$ は初期残差）または反復回数が最大ステップ数に到達した時点の早い方（最大ステップ数のデフォルトは 10000）。
 
 #### メモリ効率（Taylor係数の保持）
 ADburgersでは `TaylorArrays` で全次数の係数を保持するが、3Dではメモリが支配的になるため、**係数を逐次生成し、保存せずに和に加算する**方式を採用する。
@@ -216,7 +219,11 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 
 ### 4. 可視化 (`src/visualization.jl`)
 結果 `Solution` を受け取り、指定された断面 ($y=0.5$等) の分布図と誤差図を描画し、PNG保存する。
-出力先は `results/` とし、命名は `solution_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png` を基本とする。
+解析解の断面図も保存する（同一解像度なら同一になるため格子情報のみ付与）。
+出力先は `results/` とし、命名は以下を基本とする。
+- `exact_nx{nx}_ny{ny}_nz{nz}.png`
+- `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
+- `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
 
 ## データモデル
 - **グリッド**: Cell-centered。インデックス $i=2 \dots N_x+1$ が内点。
@@ -239,7 +246,7 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 ## テスト戦略
 - **単体テスト**: Taylor係数計算ルーチンの正当性（低次で手計算と比較）。
 - **統合テスト**: $N=16, 32, 64$ で解析解と比較し、L2誤差の収束率が2次精度であることを確認する (`test/runtests.jl` または検証スクリプト)。
-- **収束テスト**: 相対残差が $\epsilon$ に達すること、または $t_{\text{end}}$ 打ち切りで収束しない場合は警告する。
+- **収束テスト**: 相対残差が $\epsilon$ に達すること、または最大ステップ数打ち切りで収束しない場合は警告する。
   - 例: `@testset "laplacian!"`, `@testset "taylor_step!"`, `@testset "convergence_order"`
   - 検証基準: 相対 $L2$ 誤差 $\|u-u_{\text{exact}}\|_2/\|u_{\text{exact}}\|_2 \le 10^{-3}$
   - 最大誤差も計算して出力（合否判定には使わない）

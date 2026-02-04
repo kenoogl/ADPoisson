@@ -66,6 +66,7 @@
   - 時間ステップループ、収束判定 ($r=Lu-f$ 相対残差)
   - `compute_residual!` 実装（内点のみ）
   - 相対残差 $\|r\|_2 / \max(\|f\|_2, 1)$ を採用
+  - 擬似時間ステップ履歴を `results/` に保存（`history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`）
   - 拡散数 $Fo$ の推奨条件チェック（警告）
   - depends: [5a, 5b, 5c, 6]
   - _Requirements: ソルバー, 時間積分手法_
@@ -73,7 +74,7 @@
   - `plot_slice(sol, ...)` 実装 (XZ面)
   - 解析解との差分（|u-u_exact|）の可視化
   - `results/` ディレクトリを作成して保存
-  - 保存の命名規則: `solution_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
+  - 保存の命名規則: `exact_nx{nx}_ny{ny}_nz{nz}.png`, `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
   - depends: [8]
   - _Requirements: Julia実装-可視化_
 - [x] 10. CLIと実行スクリプト (`scripts/main.jl`)

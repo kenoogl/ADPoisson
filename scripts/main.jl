@@ -1,6 +1,7 @@
 #!/usr/bin/env julia
 
 using ADPoisson
+using Printf
 
 function parse_args(args)
     opts = default_cli_options()
@@ -37,7 +38,10 @@ function main()
                           Int(opts["M"]), opts["dt"], Int(opts["max_steps"]), opts["epsilon"])
     prob, _ = make_problem(config; alpha=opts["alpha"])
     bc_order = Symbol(opts["bc_order"])
-    @info "run config" nx=config.nx ny=config.ny nz=config.nz M=config.M dt=config.dt max_steps=config.max_steps epsilon=config.epsilon alpha=prob.alpha bc_order=bc_order
+    println("run config:")
+    @printf("  nx=%d ny=%d nz=%d M=%d\n", config.nx, config.ny, config.nz, config.M)
+    @printf("  dt=%.3e max_steps=%d epsilon=%.3e\n", config.dt, config.max_steps, config.epsilon)
+    @printf("  alpha=%.6f bc_order=%s\n", prob.alpha, string(bc_order))
     sol = solve(config, prob; bc_order=bc_order)
     plot_slice(sol, prob, config)
     @info "done" t=sol.t iter=sol.iter

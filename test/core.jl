@@ -1,5 +1,6 @@
 using Test
 using ADPoisson
+using Printf
 import ADPoisson: laplacian!, taylor_step!, apply_bc!, boundary_from_prob, grid_spacing
 import ADPoisson: exact_solution, source_term, dirichlet_bc
 
@@ -107,11 +108,19 @@ end
     errs = Float64[]
     do_plot = get(ENV, "ADPOISSON_TEST_PLOT", "0") == "1"
     defaults = default_cli_options()
+    use_safe_dt = get(ENV, "ADPOISSON_TEST_USE_SAFE_DT", "1") == "1"
 
     for n in ns
         prob = ProblemSpec(1.0, 1.0, 1.0, alpha, source_term, dirichlet_bc)
         dt = defaults["dt"]
+        if use_safe_dt
+            dt_safe = 0.5 / (3 * n^2)
+            dt = min(dt, dt_safe)
+        end
         max_steps = defaults["max_steps"]
+        println("test config:")
+        @printf("  n=%d dt=%.3e max_steps=%d epsilon=%.3e bc_order=%s use_safe_dt=%s\n",
+                n, dt, max_steps, 1e-6, ":high", string(use_safe_dt))
         config = SolverConfig(n, n, n, 4, dt, max_steps, 1e-6)
         sol = solve(config, prob; bc_order=:high)
         if do_plot
