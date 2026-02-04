@@ -18,7 +18,7 @@ function apply_bc!(u::Array{T,3}, bc::BoundaryConditions, m::Int, config::Solver
     dz = Lz / config.nz
 
     use_high = (order === :high) && (m == 0) &&
-               (config.nx >= 3) && (config.ny >= 3) && (config.nz >= 3)
+               (config.nx >= 4) && (config.ny >= 4) && (config.nz >= 4)
 
     if use_high
         # x-min / x-max faces (varying y,z)

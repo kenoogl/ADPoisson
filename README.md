@@ -29,6 +29,8 @@ julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-s
 - `--alpha`: 境界条件パラメータ（デフォルト: 1.0）
 - `--bc-order`: 境界条件の次数（`spec` または `high`、デフォルト: `spec`）
 - `--output-dir`: 出力ディレクトリ（デフォルト: `results`。存在しない場合は作成）
+- `--solver`: 実行するソルバー（`taylor` / `sor` / `cg`、デフォルト: `taylor`）
+- `--cg-precond`: CG の前処理（`ssor` / `none`、デフォルト: `none`）
 
 **推奨設定**
 - 拡散数 `Fo = Δt(1/Δx^2 + 1/Δy^2 + 1/Δz^2)` を `0.5` 以下にする
@@ -48,6 +50,11 @@ julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); max_steps=Int(ceil(0.5
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
 - `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
   - 擬似時間ステップの履歴（`step`, `err_l2`, `res_l2`。`res_l2` は初期残差で相対化した残差L2、`step` は更新回数で初期状態は 0）
+
+**CG 実行例**
+```bash
+julia --project scripts/main.jl --solver cg --cg-precond ssor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
+```
 
 ### **テスト**
 ```bash

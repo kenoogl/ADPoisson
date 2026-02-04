@@ -98,7 +98,7 @@
 
 ## Phase 4: 線形ソルバー（SOR/CG）
 > Phase 3 完了後に開始
-- [ ] 12. SOR ソルバーの実装（内点のみ、Dirichlet境界の寄与は RHS に取り込み）
+- [ ] 12. SOR ソルバーの実装 (`src/sor.jl`)（内点のみ、Dirichlet境界の寄与は RHS に取り込み）
   - RB-SOR 反復
   - 相対残差 $\|r\|_2/\max(\|r_0\|_2,1)$ による収束判定
   - 収束履歴の出力（`step`, `err_l2`, `res_l2`）
@@ -106,9 +106,9 @@
   - depends: [5a, 6]
   - _Requirements: 線形ソルバー_
   - _Design: 線形ソルバー（SOR）_
-- [ ] 13. CG ソルバーの実装（前処理: SSOR）
+- [ ] 13. CG ソルバーの実装 (`src/cg.jl`)（前処理: `:none` / `:ssor`）
   - 明示行列を組まず `laplacian!` による行列作用
-  - SSOR 前処理（RB-SOR の前進/後退 2 スイープ）
+  - SSOR 前処理（RBSSOR 4 スイープ、対称）
   - 相対残差の収束判定と履歴出力
   - 反復ループ内は `if` 分岐なし
   - depends: [5a, 6, 12]

@@ -176,7 +176,9 @@ CG 実行前に前提を満たすことを確認する。
 
 #### CG（前処理付き）
 - 行列作用は明示行列を組まずに `laplacian!` を用いる
-- 前処理は **SSOR** を使用（対称性を満たすように RB-SOR を前進/後退の 2 スイープで構成）
+- 前処理はオプション指定（既定 **none**、`(:none / :ssor)`）
+  - SSOR 使用時は対称性を満たす RBSSOR の 4 スイープ構成
+  - 前進 R→B、後退 B→R、前進 B→R、後退 R→B（R=red, B=black）
   - 緩和係数 $\omega=1.0$ を固定（将来変更可能な形で実装）
 - 収束判定・履歴出力は SOR と同じ基準
  - 出力は `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` に記録する
@@ -198,11 +200,21 @@ accumulate_taylor!(acc::Array{T,3}, coeff::Array{T,3}, dt_pow::T) where {T}
 horner_update!(u_new::Array{T,3}, coeffs::TaylorArrays3D{T}, dt::T, M::Int) where {T}
 
 # 線形ソルバー（SOR/CG）
-sor_solve!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions, config::SolverConfig;
-           omega::T = one(T), output_dir::AbstractString = "results") where {T}
+sor_solve(prob::ProblemSpec, config::SolverConfig;
+          omega::Real = 1.0, output_dir::AbstractString = "results",
+          bc_order::Symbol = :spec)
 
-cg_solve!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions, config::SolverConfig;
-          omega_ssor::T = one(T), output_dir::AbstractString = "results") where {T}
+sor_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::ProblemSpec,
+           config::SolverConfig; omega::T = one(T), output_dir::AbstractString = "results",
+           bc_order::Symbol = :spec) where {T}
+
+cg_solve(prob::ProblemSpec, config::SolverConfig;
+         precond::Symbol = :none, omega_ssor::Real = 1.0,
+         output_dir::AbstractString = "results", bc_order::Symbol = :spec)
+
+cg_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::ProblemSpec,
+          config::SolverConfig; precond::Symbol = :none, omega_ssor::T = one(T),
+          output_dir::AbstractString = "results", bc_order::Symbol = :spec) where {T}
 
 ssor_precond!(z::Array{T,3}, r::Array{T,3}, bc::BoundaryConditions, config::SolverConfig;
               omega::T = one(T)) where {T}
