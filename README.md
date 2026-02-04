@@ -56,6 +56,11 @@ julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); max_steps=Int(ceil(0.5
 julia --project scripts/main.jl --solver cg --cg-precond ssor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
 ```
 
+**反復解法（SOR）実行例**
+```bash
+julia --project scripts/main.jl --solver sor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
+```
+
 ### **テスト**
 ```bash
 julia --project -e 'using Pkg; Pkg.test()'

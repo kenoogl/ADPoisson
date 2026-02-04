@@ -128,18 +128,21 @@ function main()
         "nx" => config.nx,
         "ny" => config.ny,
         "nz" => config.nz,
-        "M" => config.M,
-        "dt" => config.dt,
-        "Fo" => fo,
-        "dt_source" => dt_source,
         "max_steps" => config.max_steps,
         "epsilon" => config.epsilon,
         "alpha" => prob.alpha,
         "bc_order" => string(bc_order),
         "solver" => string(solver),
-        "cg_precond" => string(cg_precond),
         "warmup" => true,
     )
+    if solver === :taylor
+        run_config["M"] = config.M
+        run_config["dt"] = config.dt
+        run_config["Fo"] = fo
+        run_config["dt_source"] = dt_source
+    elseif solver === :cg
+        run_config["cg_precond"] = string(cg_precond)
+    end
     open(joinpath(run_dir, "run_config.toml"), "w") do io
         TOML.print(io, run_config)
     end
