@@ -18,7 +18,7 @@
 ### Goals
 - Taylor級数展開（$M=10$次）による擬似時間積分ソルバーの実装
 - 解析解（Method of Manufactured Solutionsまたは具体的境界値問題）との比較による精度検証
-- コマンドラインからのパラメータ制御 ($N_x,N_y,N_z,M,\Delta t,\text{max\_steps},\epsilon,\alpha,\text{bc-order}$)
+- コマンドラインからのパラメータ制御 ($N_x,N_y,N_z,M,\Delta t, Fo,\text{max\_steps},\epsilon,\alpha,\text{bc-order},\text{output-dir}$)
 
 ### Non-Goals
 - 高速化（並列化・GPU化）は現時点での主目的ではない（将来拡張）
@@ -41,6 +41,8 @@ ADPoisson/
 │   ├── boundary.jl        # 境界条件適用 (ghost cell 更新)
 │   ├── problems.jl        # 問題設定 (解析解, ソース項定義)
 │   ├── visualization.jl   # 可視化機能 (Plots.jl / Heatmap)
+│   ├── sor.jl             # SOR ソルバー
+│   ├── cg.jl              # CG ソルバー（SSOR 前処理）
 │   └── factory.jl         # インスタンス生成ヘルパー
 ├── scripts/
 │   └── main.jl            # 実行スクリプト (CLI引数処理)
@@ -153,6 +155,34 @@ end
 5. 擬似時間ステップ履歴を `results/` に保存（`history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`）
    - 出力列: `step`, `err_l2`, `res_l2`（`res_l2` は初期残差で相対化）
 
+### 2b. 線形ソルバー（SOR/CG）
+擬似時間法とは別に、$\nabla^2 u = f$ を直接解く線形ソルバーを用意する。
+同一の離散化（7点差分、内点のみ、Dirichlet境界）を用い、**相対残差は初期残差で正規化**する。
+
+#### 対称性の確認
+Dirichlet境界と一様格子の 7 点ラプラシアンは係数が対称で、係数行列は対称正定（SPD）となるため CG が適用可能。
+実装では **格子が一様であること**と**Dirichlet境界であること**を前提とし、
+線形系は **内点のみ**で構成し **Dirichlet境界の寄与は RHS に取り込む**。
+CG 実行前に前提を満たすことを確認する。
+
+#### SOR（Red-Black）
+- 更新は RB-SOR（2色）で行う
+- 反復ごとに残差 $r=Lu-f$ を計算し、相対残差 $\|r\|_2/\max(\|r_0\|_2,1)$ を記録
+- 収束判定は $\epsilon$ と `max_steps`（擬似時間と同様）
+ - 履歴ファイル命名: `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+ - 緩和係数 $\omega=1.0$ を固定（将来変更可能な形で実装）
+ - 反復ループ（内点更新）は `if` 分岐なしで構成する
+ - 反復ループ（内点更新）は `if` 分岐なしで構成する
+
+#### CG（前処理付き）
+- 行列作用は明示行列を組まずに `laplacian!` を用いる
+- 前処理は **SSOR** を使用（対称性を満たすように RB-SOR を前進/後退の 2 スイープで構成）
+  - 緩和係数 $\omega=1.0$ を固定（将来変更可能な形で実装）
+- 収束判定・履歴出力は SOR と同じ基準
+ - 出力は `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` に記録する
+ - 履歴ファイル命名: `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+ - 反復ループ（内点更新）は `if` 分岐なしで構成する
+
 #### 関数シグネチャ（主要）
 ```julia
 apply_bc!(u::Array{T,3}, bc::BoundaryConditions, m::Int, config::SolverConfig; order=:spec) where {T}
@@ -166,6 +196,16 @@ accumulate_taylor!(acc::Array{T,3}, coeff::Array{T,3}, dt_pow::T) where {T}
 
 # 係数を保持する場合の評価（検証用途のみ）
 horner_update!(u_new::Array{T,3}, coeffs::TaylorArrays3D{T}, dt::T, M::Int) where {T}
+
+# 線形ソルバー（SOR/CG）
+sor_solve!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions, config::SolverConfig;
+           omega::T = one(T), output_dir::AbstractString = "results") where {T}
+
+cg_solve!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions, config::SolverConfig;
+          omega_ssor::T = one(T), output_dir::AbstractString = "results") where {T}
+
+ssor_precond!(z::Array{T,3}, r::Array{T,3}, bc::BoundaryConditions, config::SolverConfig;
+              omega::T = one(T)) where {T}
 ```
 
 #### Taylor係数計算と更新
@@ -181,7 +221,7 @@ horner_update!(u_new::Array{T,3}, coeffs::TaylorArrays3D{T}, dt::T, M::Int) wher
     - 例（x-min）: $u_{1}=\frac{16}{5}g-3u_{2}+u_{3}-\frac{1}{5}u_{4}$
     - x-max, y-min/y-max, z-min/z-max も同様に内側3点を用いる
     - $m\ge1$ は仕様通り $u_{\text{ghost}}=-u_{\text{adj}}$
-    - `nx,ny,nz>=3` を満たす場合にのみ使用可能
+    - `nx,ny,nz>=4` を満たす場合にのみ使用可能
   - `solve(...; bc_order=:high)` で高次境界を有効化する
 - **終了条件**: 相対残差 $\|r\|_2 / \max(\|r_0\|_2, 1) \le \epsilon$（$r_0$ は初期残差）または反復回数が最大ステップ数に到達した時点の早い方（最大ステップ数のデフォルトは 10000）。
 
@@ -235,9 +275,9 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
   - `make_grid` の戻り値も内点のみとする
 
 ## CLI引数（scripts/main.jl）
-- 形式: `julia scripts/main.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --Fo=0.3 --max-steps=10000 --epsilon=1e-10 --alpha=1.0 --output-dir results`
+- 形式: `julia scripts/main.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --Fo=0.3 --max-steps=10000 --epsilon=1e-10 --alpha=1.0 --bc-order high --output-dir results`
 - 必須: `--nx,--ny,--nz`
-- 任意: `--M,--dt,--Fo,--max-steps,--epsilon,--alpha,--output-dir`（`--Fo` があれば `--dt` より優先、デフォルトは requirements.md に準拠）
+- 任意: `--M,--dt,--Fo,--max-steps,--epsilon,--alpha,--bc-order,--output-dir`（`--Fo` があれば `--dt` より優先、デフォルトは requirements.md に準拠）
 
 ## エラーハンドリング
 - パラメータチェック: $N_x, N_y, N_z > 0$, $M \ge 1$ 等。

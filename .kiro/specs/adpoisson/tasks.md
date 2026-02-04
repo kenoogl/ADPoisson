@@ -54,6 +54,7 @@
   - `apply_bc!(u, bc, m, config)`
   - Dirichlet条件 (ghost cell更新) の実装
   - ghost更新は面のみ（エッジ・コーナーは更新しない）
+  - 高次境界（任意, m=0 のみ、`nx,ny,nz>=4` が条件）
   - _Requirements: 領域・境界条件, Taylor級数漸化式_
 - [x] 7. factory.jl の実装 (`src/factory.jl`)
   - `make_problem(config, alpha)` 等のヘルパーを実装
@@ -65,8 +66,8 @@
   - `solve(config, prob)` 実装
   - 時間ステップループ、収束判定 ($r=Lu-f$ 相対残差)
   - `compute_residual!` 実装（内点のみ）
-  - 相対残差 $\|r\|_2 / \max(\|f\|_2, 1)$ を採用
-  - 擬似時間ステップ履歴を `results/` に保存（`history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`）
+  - 相対残差 $\|r\|_2 / \max(\|r_0\|_2, 1)$ を採用
+  - 擬似時間ステップ履歴を `run_YYYYMMDD_HHMMSS/` 配下に保存（`history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`）
   - 拡散数 $Fo$ の推奨条件チェック（警告）
   - depends: [5a, 5b, 5c, 6]
   - _Requirements: ソルバー, 時間積分手法_
@@ -79,7 +80,7 @@
   - _Requirements: Julia実装-可視化_
 - [x] 10. CLIと実行スクリプト (`scripts/main.jl`)
   - コマンドライン引数処理
-  - `--nx --ny --nz --M --dt --max-steps --epsilon --alpha` に対応
+  - `--nx --ny --nz --M --dt --Fo --max-steps --epsilon --alpha --bc-order --output-dir` に対応
   - `factory.jl` を利用して問題生成
   - depends: [7, 8]
   - _Requirements: Julia実装-パラメータ_
@@ -89,8 +90,38 @@
   - `test/core.jl`, `test/problems.jl` の構成で分割
   - `@testset "laplacian!"`, `@testset "taylor_step!"`, `@testset "convergence_order"` を追加
   - `laplacian!` テスト: 一様場 $u=c$ で $L=0$ を確認
-  - `taylor_step!` テスト: $m=0$ で $(u)_1 = f - Lu$ を確認
+  - `taylor_step!` テスト: $m=0$ で $(u)_1 = Lu - f$ を確認
   - 最大誤差も計算して出力（合否判定には使わない）
   - depends: [8]
   - 単体テスト（laplacian!, taylor_step!）は Phase 2 完了時点で実行可能
   - _Requirements: 検証機能_
+
+## Phase 4: 線形ソルバー（SOR/CG）
+> Phase 3 完了後に開始
+- [ ] 12. SOR ソルバーの実装（内点のみ、Dirichlet境界の寄与は RHS に取り込み）
+  - RB-SOR 反復
+  - 相対残差 $\|r\|_2/\max(\|r_0\|_2,1)$ による収束判定
+  - 収束履歴の出力（`step`, `err_l2`, `res_l2`）
+  - 反復ループ内は `if` 分岐なし
+  - depends: [5a, 6]
+  - _Requirements: 線形ソルバー_
+  - _Design: 線形ソルバー（SOR）_
+- [ ] 13. CG ソルバーの実装（前処理: SSOR）
+  - 明示行列を組まず `laplacian!` による行列作用
+  - SSOR 前処理（RB-SOR の前進/後退 2 スイープ）
+  - 相対残差の収束判定と履歴出力
+  - 反復ループ内は `if` 分岐なし
+  - depends: [5a, 6, 12]
+  - _Requirements: 線形ソルバー_
+  - _Design: 線形ソルバー（CG/SSOR）_
+- [ ] 14. 収束性の比較
+  - 擬似時間法（Taylor）と SOR/CG の収束履歴を同一指標で比較
+  - 例題は共通の検証問題を使用
+  - 比較結果を `run_YYYYMMDD_HHMMSS/` に保存
+  - depends: [8, 12, 13]
+  - _Requirements: 検証機能_
+  - _Design: 比較スクリプト_
+- [ ] 15. Phase 4 テスト (`test/solvers.jl`)
+  - SOR: 小規模問題で既知解との一致を確認
+  - CG: SORと同一問題で収束を確認
+  - depends: [12, 13]

@@ -31,6 +31,20 @@
     $$Fo=\Delta t\left(\frac{1}{\Delta x^2}+\frac{1}{\Delta y^2}+\frac{1}{\Delta z^2}\right)$$
     と定義し、明示的安定性の推奨条件として $Fo \le 1/2$ を満たす
   - コマンドラインでは $\Delta t$ での指定に加えて $Fo$ での指定を許可する（$Fo$ 指定がある場合は優先）
+- [ ] **線形ソルバー（SOR/CG）**
+  - $\nabla^2 u = f$ を直接解く SOR 法と CG 法を実装する
+  - 例題は擬似時間法と同一の検証問題を用いる
+  - 収束判定は相対残差 $\|r\|_2 / \max(\|r_0\|_2, 1) \le \epsilon$（$r=Lu-f$、内点のみ）で統一する
+  - 線形系は内点のみの方程式として構成し、Dirichlet境界の寄与は RHS に取り込む
+  - 収束履歴（`step`, `err_l2`, `res_l2`）を出力し、収束性を比較できるようにする
+    - SOR: `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+    - CG: `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+  - 反復ループ内（内点更新）では `if` 分岐を使わず、事前に条件分岐を外へ出す
+  - SOR の緩和係数 $\omega$ は 1.0 を既定値とする（後で変更可能な形で実装する）
+  - CG の前処理は **SSOR** を用いる（対称性を満たす前処理）
+    - 緩和係数 $\omega$ は 1.0 を使用（後で変更可能な形で実装する）
+  - CG が適用可能であること（係数行列の対称性・正定性）を確認する
+  - 出力は実行ごとの `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` を記録する
 - [ ] **Taylor級数漸化式（3D Poisson, 擬似時間）**
   - 詳細は `/Users/Daily/Development/ADTM/ADPoisson漸化式.md` に準拠
   - Poisson: $\nabla^2 u = f$ を擬似時間で $u_t = \nabla^2 u - f$ として解く
@@ -51,6 +65,7 @@
     - **高次境界（任意, m=0 のみ）**: 境界近傍の精度改善のため、$m=0$ のみ 3次外挿を許可する。
       - 一般式: $u_{\text{ghost}}=\frac{16}{5}g-3u_1+u_2-\frac{1}{5}u_3$
       - ここで $u_1,u_2,u_3$ は境界から内側方向に並ぶ 1,2,3 番目の内点値
+      - 適用条件: 各方向で内点が 4 点以上（`nx,ny,nz >= 4`）
     - Neumann $\partial u/\partial n=h$: $m=0$ で $u_{\text{ghost}}=u_{\text{adj}}\pm\Delta n\,h$、$m\ge1$ で $u_{\text{ghost}}=u_{\text{adj}}$
   - 6面の ghost 係数式（Julia 1-origin）:
     - Dirichlet（面データ: `g_xlo/g_xhi/g_ylo/g_yhi/g_zlo/g_zhi`）
