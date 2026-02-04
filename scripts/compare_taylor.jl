@@ -166,9 +166,7 @@ function main()
     for M in Ms
         config = SolverConfig(nx, ny, nz, M, dt, max_steps, epsilon)
         prob, _ = make_problem(config; alpha=alpha)
-        t_start = time()
-        sol = solve(config, prob; bc_order=bc_order, output_dir=run_dir)
-        runtime = time() - t_start
+        sol, runtime = solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir)
         u_exact = ADPoisson.exact_solution_array(sol, prob, config)
         err_l2, err_max = ADPoisson.error_stats_precomputed(sol.u, u_exact, prob, config)
         tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(M)_steps$(sol.iter)"

@@ -147,15 +147,13 @@ function main()
         TOML.print(io, run_config)
     end
     warmup_solve(config, prob, bc_order, run_dir, solver, cg_precond)
-    t_start = time()
-    sol = if solver === :taylor
-        solve(config, prob; bc_order=bc_order, output_dir=run_dir)
+    sol, runtime = if solver === :taylor
+        solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir)
     elseif solver === :sor
-        sor_solve(prob, config; bc_order=bc_order, output_dir=run_dir)
+        sor_solve_with_runtime(prob, config; bc_order=bc_order, output_dir=run_dir)
     else
-        cg_solve(prob, config; precond=cg_precond, bc_order=bc_order, output_dir=run_dir)
+        cg_solve_with_runtime(prob, config; precond=cg_precond, bc_order=bc_order, output_dir=run_dir)
     end
-    runtime = time() - t_start
     plot_slice(sol, prob, config; output_dir=run_dir)
     u_exact = ADPoisson.exact_solution_array(sol, prob, config)
     err_l2, err_max = ADPoisson.error_stats_precomputed(sol.u, u_exact, prob, config)

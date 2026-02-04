@@ -1,6 +1,25 @@
 # cg.jl
 
 """
+    cg_solve_with_runtime(prob, config; precond=:none, omega_ssor=1.0, output_dir="results", bc_order=:spec)
+
+Solve Poisson equation using PCG and return (Solution, runtime_s).
+"""
+function cg_solve_with_runtime(prob::ProblemSpec, config::SolverConfig;
+                               precond::Symbol=:none, omega_ssor::Real=1.0,
+                               output_dir::AbstractString="results", bc_order=:spec)
+    sol = initialize_solution(config, prob)
+    bc = boundary_from_prob(prob)
+    f = zeros(eltype(sol.u), config.nx + 2, config.ny + 2, config.nz + 2)
+    compute_source!(f, prob, config)
+    omega_t = convert(eltype(sol.u), omega_ssor)
+    _, sol_out, runtime = cg_solve_with_runtime!(sol, f, bc, prob, config;
+                                                 precond=precond, omega_ssor=omega_t,
+                                                 output_dir=output_dir, bc_order=bc_order)
+    return sol_out, runtime
+end
+
+"""
     cg_solve(prob, config; precond=:none, omega_ssor=1.0, output_dir="results", bc_order=:spec)
 
 Solve Poisson equation using PCG and return Solution.
@@ -8,14 +27,9 @@ Solve Poisson equation using PCG and return Solution.
 function cg_solve(prob::ProblemSpec, config::SolverConfig;
                   precond::Symbol=:none, omega_ssor::Real=1.0,
                   output_dir::AbstractString="results", bc_order=:spec)
-    sol = initialize_solution(config, prob)
-    bc = boundary_from_prob(prob)
-    f = zeros(eltype(sol.u), config.nx + 2, config.ny + 2, config.nz + 2)
-    compute_source!(f, prob, config)
-    omega_t = convert(eltype(sol.u), omega_ssor)
-    _, sol_out = cg_solve!(sol, f, bc, prob, config;
-                           precond=precond, omega_ssor=omega_t,
-                           output_dir=output_dir, bc_order=bc_order)
+    sol_out, _ = cg_solve_with_runtime(prob, config;
+                                       precond=precond, omega_ssor=omega_ssor,
+                                       output_dir=output_dir, bc_order=bc_order)
     return sol_out
 end
 
@@ -29,6 +43,17 @@ function cg_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions,
                    precond::Symbol=:none, omega_ssor::T=one(T),
                    output_dir::AbstractString="results",
                    bc_order=:spec) where {T<:Real}
+    converged, result, _ = cg_solve_with_runtime!(sol, f, bc, prob, config;
+                                                  precond=precond, omega_ssor=omega_ssor,
+                                                  output_dir=output_dir, bc_order=bc_order)
+    return converged, result
+end
+
+function cg_solve_with_runtime!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions,
+                                prob::ProblemSpec, config::SolverConfig;
+                                precond::Symbol=:none, omega_ssor::T=one(T),
+                                output_dir::AbstractString="results",
+                                bc_order=:spec) where {T<:Real}
     precond === :ssor || precond === :none || error("precond must be :ssor or :none")
     u = sol.u
     r = similar(u)
@@ -61,6 +86,7 @@ function cg_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions,
 
     converged = false
     iter = 0
+    t_start = time()
     for step in 1:config.max_steps
         apply_A!(q, p, bc0, config, prob)
         denom_cg = dot_interior(p, q, config)
@@ -94,6 +120,7 @@ function cg_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions,
         update_p!(p, z, beta, config)
         rho = rho_new
     end
+    runtime = time() - t_start
 
     output_dir = string(output_dir)
     isdir(output_dir) || mkpath(output_dir)
@@ -104,7 +131,7 @@ function cg_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions,
     end
 
     result = Solution(sol.x, sol.y, sol.z, sol.u, zero(T), iter)
-    return converged, result
+    return converged, result, runtime
 end
 
 function zero_boundary_conditions(::Type{T}) where {T<:Real}
@@ -116,12 +143,8 @@ function apply_A!(q::Array{T,3}, p::Array{T,3}, bc0::BoundaryConditions,
                   config::SolverConfig, prob::ProblemSpec) where {T<:Real}
     apply_bc!(p, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
     laplacian!(q, p, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    @inbounds for k in 2:config.nz+1
-        for j in 2:config.ny+1
-            for i in 2:config.nx+1
-                q[i, j, k] = -q[i, j, k]
-            end
-        end
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        q[i, j, k] = -q[i, j, k]
     end
 end
 
@@ -186,45 +209,29 @@ end
 
 function dot_interior(a::Array{T,3}, b::Array{T,3}, config::SolverConfig) where {T<:Real}
     s = zero(T)
-    @inbounds for k in 2:config.nz+1
-        for j in 2:config.ny+1
-            for i in 2:config.nx+1
-                s += a[i, j, k] * b[i, j, k]
-            end
-        end
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        s += a[i, j, k] * b[i, j, k]
     end
     return s
 end
 
 function copy_interior!(dest::Array{T,3}, src::Array{T,3}, config::SolverConfig) where {T<:Real}
-    @inbounds for k in 2:config.nz+1
-        for j in 2:config.ny+1
-            for i in 2:config.nx+1
-                dest[i, j, k] = src[i, j, k]
-            end
-        end
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        dest[i, j, k] = src[i, j, k]
     end
     return dest
 end
 
 function update_p!(p::Array{T,3}, z::Array{T,3}, beta::T, config::SolverConfig) where {T<:Real}
-    @inbounds for k in 2:config.nz+1
-        for j in 2:config.ny+1
-            for i in 2:config.nx+1
-                p[i, j, k] = z[i, j, k] + beta * p[i, j, k]
-            end
-        end
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        p[i, j, k] = z[i, j, k] + beta * p[i, j, k]
     end
     return p
 end
 
 function axpy_interior!(x::Array{T,3}, y::Array{T,3}, a::T, config::SolverConfig) where {T<:Real}
-    @inbounds for k in 2:config.nz+1
-        for j in 2:config.ny+1
-            for i in 2:config.nx+1
-                x[i, j, k] += a * y[i, j, k]
-            end
-        end
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        x[i, j, k] += a * y[i, j, k]
     end
     return x
 end

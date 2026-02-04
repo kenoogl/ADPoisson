@@ -57,14 +57,10 @@ function laplacian!(Lu::Array{T,3}, u::Array{T,3}, config::SolverConfig; Lx=1, L
     inv_dx2 = one(T) / (dx * dx)
     inv_dy2 = one(T) / (dy * dy)
     inv_dz2 = one(T) / (dz * dz)
-    @inbounds for k in 2:config.nz+1
-        for j in 2:config.ny+1
-            for i in 2:config.nx+1
-                Lu[i, j, k] = (u[i+1, j, k] - 2 * u[i, j, k] + u[i-1, j, k]) * inv_dx2 +
-                             (u[i, j+1, k] - 2 * u[i, j, k] + u[i, j-1, k]) * inv_dy2 +
-                             (u[i, j, k+1] - 2 * u[i, j, k] + u[i, j, k-1]) * inv_dz2
-            end
-        end
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        Lu[i, j, k] = (u[i+1, j, k] - 2 * u[i, j, k] + u[i-1, j, k]) * inv_dx2 +
+                     (u[i, j+1, k] - 2 * u[i, j, k] + u[i, j-1, k]) * inv_dy2 +
+                     (u[i, j, k+1] - 2 * u[i, j, k] + u[i, j, k-1]) * inv_dz2
     end
     return Lu
 end
@@ -79,20 +75,12 @@ function taylor_step!(next::Array{T,3}, curr::Array{T,3}, f::Array{T,3}, m::Int,
                       config::SolverConfig; Lx=1, Ly=1, Lz=1) where {T}
     laplacian!(next, curr, config; Lx=Lx, Ly=Ly, Lz=Lz)
     if m == 0
-        @inbounds for k in 2:config.nz+1
-            for j in 2:config.ny+1
-                for i in 2:config.nx+1
-                    next[i, j, k] = (next[i, j, k] - f[i, j, k]) / (m + 1)
-                end
-            end
+        @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+            next[i, j, k] = (next[i, j, k] - f[i, j, k]) / (m + 1)
         end
     else
-        @inbounds for k in 2:config.nz+1
-            for j in 2:config.ny+1
-                for i in 2:config.nx+1
-                    next[i, j, k] = next[i, j, k] / (m + 1)
-                end
-            end
+        @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+            next[i, j, k] = next[i, j, k] / (m + 1)
         end
     end
     return next
@@ -105,12 +93,8 @@ Accumulate Taylor series sum: acc += coeff * dt_pow (interior only).
 """
 function accumulate_taylor!(acc::Array{T,3}, coeff::Array{T,3}, dt_pow::T,
                             config::SolverConfig) where {T}
-    @inbounds for k in 2:config.nz+1
-        for j in 2:config.ny+1
-            for i in 2:config.nx+1
-                acc[i, j, k] += coeff[i, j, k] * dt_pow
-            end
-        end
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        acc[i, j, k] += coeff[i, j, k] * dt_pow
     end
     return acc
 end
@@ -122,20 +106,12 @@ Horner evaluation for full coefficient storage (verification use).
 """
 function horner_update!(u_new::Array{T,3}, coeffs::TaylorArrays3D{T}, dt::T, M::Int,
                         config::SolverConfig) where {T}
-    @inbounds for k in 2:config.nz+1
-        for j in 2:config.ny+1
-            for i in 2:config.nx+1
-                u_new[i, j, k] = coeffs.U[i, j, k, M + 1]
-            end
-        end
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        u_new[i, j, k] = coeffs.U[i, j, k, M + 1]
     end
     for m in M-1:-1:0
-        @inbounds for k in 2:config.nz+1
-            for j in 2:config.ny+1
-                for i in 2:config.nx+1
-                    u_new[i, j, k] = u_new[i, j, k] * dt + coeffs.U[i, j, k, m + 1]
-                end
-            end
+        @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+            u_new[i, j, k] = u_new[i, j, k] * dt + coeffs.U[i, j, k, m + 1]
         end
     end
     return u_new
@@ -177,15 +153,11 @@ Fill source term on interior points.
 """
 function compute_source!(f::Array{T,3}, prob::ProblemSpec, config::SolverConfig) where {T}
     dx, dy, dz = grid_spacing(config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    @inbounds for k in 2:config.nz+1
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
         z = (k - 1.5) * dz
-        for j in 2:config.ny+1
-            y = (j - 1.5) * dy
-            for i in 2:config.nx+1
-                x = (i - 1.5) * dx
-                f[i, j, k] = prob.source(x, y, z)
-            end
-        end
+        y = (j - 1.5) * dy
+        x = (i - 1.5) * dx
+        f[i, j, k] = prob.source(x, y, z)
     end
     return f
 end
@@ -198,12 +170,8 @@ Compute residual r = Lu - f on interior points.
 function compute_residual!(r::Array{T,3}, u::Array{T,3}, f::Array{T,3},
                            config::SolverConfig; Lx=1, Ly=1, Lz=1) where {T}
     laplacian!(r, u, config; Lx=Lx, Ly=Ly, Lz=Lz)
-    @inbounds for k in 2:config.nz+1
-        for j in 2:config.ny+1
-            for i in 2:config.nx+1
-                r[i, j, k] -= f[i, j, k]
-            end
-        end
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        r[i, j, k] -= f[i, j, k]
     end
     return r
 end
@@ -215,12 +183,8 @@ Compute L2 norm over interior points.
 """
 function l2_norm_interior(a::Array{T,3}, config::SolverConfig) where {T}
     s = zero(T)
-    @inbounds for k in 2:config.nz+1
-        for j in 2:config.ny+1
-            for i in 2:config.nx+1
-                s += a[i, j, k]^2
-            end
-        end
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        s += a[i, j, k]^2
     end
     return sqrt(s)
 end
@@ -235,17 +199,10 @@ function l2_error_exact(sol::Solution, prob::ProblemSpec, config::SolverConfig)
     dy = prob.Ly / config.ny
     dz = prob.Lz / config.nz
     s = 0.0
-    @inbounds for k in 1:config.nz
-        for j in 1:config.ny
-            for i in 1:config.nx
-                x = sol.x[i]
-                y = sol.y[j]
-                z = sol.z[k]
-                uex = exact_solution(x, y, z, prob.alpha)
-                u = sol.u[i + 1, j + 1, k + 1]
-                s += (u - uex)^2
-            end
-        end
+    @inbounds for k in 1:config.nz, j in 1:config.ny, i in 1:config.nx
+        uex = exact_solution(sol.x[i], sol.y[j], sol.z[k], prob.alpha)
+        u = sol.u[i + 1, j + 1, k + 1]
+        s += (u - uex)^2
     end
     return sqrt(s * dx * dy * dz)
 end
@@ -257,12 +214,8 @@ Precompute exact solution on interior points.
 """
 function exact_solution_array(sol::Solution, prob::ProblemSpec, config::SolverConfig)
     uex = Array{eltype(sol.u)}(undef, config.nx, config.ny, config.nz)
-    @inbounds for k in 1:config.nz
-        for j in 1:config.ny
-            for i in 1:config.nx
-                uex[i, j, k] = exact_solution(sol.x[i], sol.y[j], sol.z[k], prob.alpha)
-            end
-        end
+    @inbounds for k in 1:config.nz, j in 1:config.ny, i in 1:config.nx
+        uex[i, j, k] = exact_solution(sol.x[i], sol.y[j], sol.z[k], prob.alpha)
     end
     return uex
 end
@@ -278,13 +231,9 @@ function l2_error_exact_precomputed(u::Array{T,3}, uex::Array{T,3},
     dy = prob.Ly / config.ny
     dz = prob.Lz / config.nz
     s = zero(T)
-    @inbounds for k in 1:config.nz
-        for j in 1:config.ny
-            for i in 1:config.nx
-                diff = u[i + 1, j + 1, k + 1] - uex[i, j, k]
-                s += diff^2
-            end
-        end
+    @inbounds for k in 1:config.nz, j in 1:config.ny, i in 1:config.nx
+        diff = u[i + 1, j + 1, k + 1] - uex[i, j, k]
+        s += diff^2
     end
     return sqrt(s * dx * dy * dz)
 end
@@ -301,28 +250,18 @@ function error_stats_precomputed(u::Array{T,3}, uex::Array{T,3},
     dz = prob.Lz / config.nz
     s = zero(T)
     err_max = zero(T)
-    @inbounds for k in 1:config.nz
-        for j in 1:config.ny
-            for i in 1:config.nx
-                diff = u[i + 1, j + 1, k + 1] - uex[i, j, k]
-                s += diff^2
-                ad = abs(diff)
-                if ad > err_max
-                    err_max = ad
-                end
-            end
+    @inbounds for k in 1:config.nz, j in 1:config.ny, i in 1:config.nx
+        diff = u[i + 1, j + 1, k + 1] - uex[i, j, k]
+        s += diff^2
+        ad = abs(diff)
+        if ad > err_max
+            err_max = ad
         end
     end
     return sqrt(s * dx * dy * dz), err_max
 end
 
-"""
-    solve(config, prob; bc_order=:spec, output_dir="results")
-
-Main solver loop using Taylor series pseudo-time stepping.
-"""
-function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results")
-    t_start = time()
+function solve_core(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results")
     sol = initialize_solution(config, prob)
     bc = boundary_from_prob(prob)
 
@@ -347,6 +286,7 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_d
     history = IOBuffer()
     println(history, "# step err_l2 res_l2")
 
+    t_start = time()
     while true
         apply_bc!(sol.u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
         compute_residual!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
@@ -360,6 +300,7 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_d
         taylor_series_update!(sol.u, buffers, f, bc, config, prob; bc_order=bc_order)
         iter += 1
     end
+    runtime = time() - t_start
 
     t = config.dt * iter
     result = Solution(sol.x, sol.y, sol.z, sol.u, t, iter)
@@ -371,7 +312,26 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_d
     open(history_path, "w") do io
         write(io, String(take!(history)))
     end
-    runtime = time() - t_start
     @info "summary" Fo=Fo dt=config.dt err_l2=@sprintf("%.3e", err_l2) err_max=@sprintf("%.3e", err_max) steps=iter runtime_s=@sprintf("%.3f", runtime)
-    return result
+    return result, runtime
+end
+
+"""
+    solve_with_runtime(config, prob; bc_order=:spec, output_dir="results")
+
+Main solver loop using Taylor series pseudo-time stepping.
+Returns (Solution, runtime_s) where runtime is the solve loop only.
+"""
+function solve_with_runtime(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results")
+    return solve_core(config, prob; bc_order=bc_order, output_dir=output_dir)
+end
+
+"""
+    solve(config, prob; bc_order=:spec, output_dir="results")
+
+Main solver loop using Taylor series pseudo-time stepping.
+"""
+function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results")
+    sol, _ = solve_core(config, prob; bc_order=bc_order, output_dir=output_dir)
+    return sol
 end
