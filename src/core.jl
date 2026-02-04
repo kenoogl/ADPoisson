@@ -317,11 +317,11 @@ function error_stats_precomputed(u::Array{T,3}, uex::Array{T,3},
 end
 
 """
-    solve(config, prob)
+    solve(config, prob; bc_order=:spec, output_dir="results")
 
 Main solver loop using Taylor series pseudo-time stepping.
 """
-function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)
+function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results")
     t_start = time()
     sol = initialize_solution(config, prob)
     bc = boundary_from_prob(prob)
@@ -364,7 +364,7 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)
     t = config.dt * iter
     result = Solution(sol.x, sol.y, sol.z, sol.u, t, iter)
     err_l2, err_max = error_stats_precomputed(result.u, u_exact, prob, config)
-    output_dir = "results"
+    output_dir = string(output_dir)
     isdir(output_dir) || mkpath(output_dir)
     tag = "nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_M$(config.M)_steps$(iter)"
     history_path = joinpath(output_dir, "history_$(tag).txt")

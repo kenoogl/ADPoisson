@@ -141,7 +141,7 @@ end
 
 ### 2. コアアルゴリズム (`src/core.jl`, `src/boundary.jl`)
 
-#### `solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec)`
+#### `solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results")`
 1. グリッド初期化
 2. 初期条件設定 ($u=0$)
 3. 時間ループ
@@ -220,7 +220,7 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 ### 4. 可視化 (`src/visualization.jl`)
 結果 `Solution` を受け取り、指定された断面 ($y=0.5$等) の分布図と誤差図を描画し、PNG保存する。
 解析解の断面図も保存する（同一解像度なら同一になるため格子情報のみ付与）。
-出力先は `results/` とし、命名は以下を基本とする。
+出力先は `output_dir` で指定し、デフォルトは `results/` とする。命名は以下を基本とする。
 - `exact_nx{nx}_ny{ny}_nz{nz}.png`
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
 - `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
@@ -233,9 +233,9 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
   - `make_grid` の戻り値も内点のみとする
 
 ## CLI引数（scripts/main.jl）
-- 形式: `julia scripts/main.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --max-steps=10000 --epsilon=1e-10 --alpha=1.0`
+- 形式: `julia scripts/main.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --Fo=0.3 --max-steps=10000 --epsilon=1e-10 --alpha=1.0 --output-dir results`
 - 必須: `--nx,--ny,--nz`
-- 任意: `--M,--dt,--max-steps,--epsilon,--alpha`（デフォルトは requirements.md に準拠）
+- 任意: `--M,--dt,--Fo,--max-steps,--epsilon,--alpha,--output-dir`（`--Fo` があれば `--dt` より優先、デフォルトは requirements.md に準拠）
 
 ## エラーハンドリング
 - パラメータチェック: $N_x, N_y, N_z > 0$, $M \ge 1$ 等。

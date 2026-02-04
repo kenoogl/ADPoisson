@@ -12,7 +12,7 @@ julia --project -e 'using Pkg; Pkg.instantiate()'
 
 **実行**
 ```bash
-julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-10 --alpha 1.0
+julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-10 --alpha 1.0 --output-dir results
 ```
 
 終了時に `Fo`、解析解との **L2誤差（絶対値）**、**最大誤差**、ステップ数、実行時間をまとめて出力します。`Fo > 0.5` の場合は警告を表示します。
@@ -21,11 +21,13 @@ julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-s
 - `--nx`, `--ny`, `--nz`: 各方向の分割数（デフォルト: 16）
 - `--M`: Taylor 展開次数（デフォルト: 10）
 - `--dt`: 擬似時間刻み幅（デフォルト: 1e-4）
+- `--Fo`: 拡散数による指定（`Fo = Δt(1/Δx^2 + 1/Δy^2 + 1/Δz^2)`、`--dt` より優先）
 - `--max-steps`: 擬似時間積分の最大ステップ数（デフォルト: 10000）
 - `--epsilon`: 収束判定の相対残差閾値（デフォルト: 1e-10）
   - 相対残差は $\|r\|_2 / \max(\|r_0\|_2, 1)$（$r=Lu-f$、$r_0$ は初期残差、内点のみ評価）
 - `--alpha`: 境界条件パラメータ（デフォルト: 1.0）
 - `--bc-order`: 境界条件の次数（`spec` または `high`、デフォルト: `spec`）
+- `--output-dir`: 出力ディレクトリ（デフォルト: `results`。存在しない場合は作成）
 
 **推奨設定**
 - 拡散数 `Fo = Δt(1/Δx^2 + 1/Δy^2 + 1/Δz^2)` を `0.5` 以下にする
@@ -39,7 +41,7 @@ julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-s
 julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); max_steps=Int(ceil(0.5/dt)); config=SolverConfig(n,n,n,4,dt,max_steps,1e-6); prob,_=make_problem(config; alpha=1.0); sol=solve(config, prob; bc_order=:high)'
 ```
 
-出力は `results/` に保存されます:
+出力は `--output-dir` で指定したディレクトリに保存されます（デフォルト: `results/`）:
 - `exact_nx{nx}_ny{ny}_nz{nz}.png`（解析解のため格子情報のみ）
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
 - `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
@@ -73,3 +75,14 @@ ADPOISSON_FULL_TEST=1 julia --project -e 'using Pkg; Pkg.test()'
 ```bash
 ADPOISSON_TEST_PLOT=1 julia --project -e 'using Pkg; Pkg.test()'
 ```
+
+**Taylor次数比較**
+指定パラメータのまま Taylor 展開次数 `M` のみを変化させ、収束解と履歴を比較します。
+```bash
+julia --project scripts/compare_taylor.jl --nx 32 --ny 32 --nz 32 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --Ms 2,4,6,8,10 --output-dir results
+```
+`--Fo` を指定した場合は `dt` より優先されます。`Fo > 0.5` の場合は、比較スクリプト内で `dt` を `Fo=0.5` になるようにクリップします。
+出力は `--output-dir` で指定したディレクトリに保存されます（存在しない場合は作成）:
+- `compare_M_nx{nx}_ny{ny}_nz{nz}_Ms{Mlist}.txt`（列: `M`, `steps`, `err_l2`, `err_max`, `runtime_s`）
+- `history_compare_nx{nx}_ny{ny}_nz{nz}_Ms{Mlist}.png`
+- `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`（各 M の履歴）

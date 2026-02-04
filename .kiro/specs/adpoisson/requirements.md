@@ -25,9 +25,11 @@
   - 擬似時間ステップの履歴をファイルに出力する
     - ファイル名: `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
     - 出力列: `step`, `err_l2`, `res_l2`（`res_l2` は初期残差で相対化した残差L2）
+    - 出力先は指定可能（デフォルト: `results/`）
   - 擬似時間刻みの条件は拡散数で管理する（推奨条件として採用）。拡散数（$\nu=1$）は
     $$Fo=\Delta t\left(\frac{1}{\Delta x^2}+\frac{1}{\Delta y^2}+\frac{1}{\Delta z^2}\right)$$
     と定義し、明示的安定性の推奨条件として $Fo \le 1/2$ を満たす
+  - コマンドラインでは $\Delta t$ での指定に加えて $Fo$ での指定を許可する（$Fo$ 指定がある場合は優先）
 - [ ] **Taylor級数漸化式（3D Poisson, 擬似時間）**
   - 詳細は `/Users/Daily/Development/ADTM/ADPoisson漸化式.md` に準拠
   - Poisson: $\nabla^2 u = f$ を擬似時間で $u_t = \nabla^2 u - f$ として解く
@@ -100,8 +102,8 @@
 
 - Julia実装
   - パラメータはコマンドラインで指定
-  - $N_x, N_y, N_z$, Taylor展開次数 $M$, $\Delta t$, 最大ステップ数, 境界条件次数（`spec`/`high`）
-  - 可視化は $y=0.5$ の断面（XZ面）をヒートマップ/コンターで表示し、解析解との誤差も可視化
+  - $N_x, N_y, N_z$, Taylor展開次数 $M$, $\Delta t$ または $Fo$, 最大ステップ数, 境界条件次数（`spec`/`high`）, 出力ディレクトリ
+  - 可視化は $y=0.5$ の断面（XZ面）をヒートマップ/コンターで表示し、解析解との誤差も可視化（出力先は指定可能）
   - 擬似時間ステップ履歴のファイル出力を行う
 
 ## 非機能要件
