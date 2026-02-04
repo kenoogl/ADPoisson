@@ -18,6 +18,14 @@ function make_run_dir(output_dir; prefix="run")
     return run_dir
 end
 
+function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol, output_dir::String)
+    warm_dir = joinpath(output_dir, "_warmup")
+    isdir(warm_dir) || mkpath(warm_dir)
+    warm_config = SolverConfig(config.nx, config.ny, config.nz, config.M, config.dt, 1, 0.0)
+    solve(warm_config, prob; bc_order=bc_order, output_dir=warm_dir)
+    rm(warm_dir; recursive=true, force=true)
+end
+
 function parse_args(args)
     opts = default_cli_options()
     opts["output_dir"] = "results"
@@ -105,10 +113,12 @@ function main()
         "epsilon" => config.epsilon,
         "alpha" => prob.alpha,
         "bc_order" => string(bc_order),
+        "warmup" => true,
     )
     open(joinpath(run_dir, "run_config.toml"), "w") do io
         TOML.print(io, run_config)
     end
+    warmup_solve(config, prob, bc_order, run_dir)
     t_start = time()
     sol = solve(config, prob; bc_order=bc_order, output_dir=run_dir)
     runtime = time() - t_start

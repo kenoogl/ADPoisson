@@ -16,6 +16,7 @@ julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-s
 ```
 
 終了時に `Fo`、解析解との **L2誤差（絶対値）**、**最大誤差**、ステップ数、実行時間をまとめて出力します。`Fo > 0.5` の場合は警告を表示します。
+`run_summary.toml` の `runtime_s` は **JIT コンパイルを除外するためのウォームアップ実行後**の計測値です。
 
 **コマンドライン引数**
 - `--nx`, `--ny`, `--nz`: 各方向の分割数（デフォルト: 16）
@@ -83,6 +84,7 @@ ADPOISSON_TEST_PLOT=1 julia --project -e 'using Pkg; Pkg.test()'
 julia --project scripts/compare_taylor.jl --nx 32 --ny 32 --nz 32 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --Ms 2,4,6,8,10 --output-dir results
 ```
 `--Fo` を指定した場合は `dt` より優先されます。`Fo > 0.5` の場合は、比較スクリプト内で `dt` を `Fo=0.5` になるようにクリップします。
+`runtime_s` はウォームアップ実行後に計測します。
 出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（存在しない場合は作成）。
 `run_config.toml` と `run_summary.toml` に実行条件と結果を記録します。
 - `compare_M_nx{nx}_ny{ny}_nz{nz}_Ms{Mlist}.txt`（列: `M`, `steps`, `err_l2`, `err_max`, `runtime_s`）
@@ -96,6 +98,7 @@ julia --project scripts/compare_fo.jl --nx 32 --ny 32 --nz 32 --M 10 --max-steps
 ```
 出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（存在しない場合は作成）。
 `run_config.toml` と `run_summary.toml` に実行条件と結果を記録します。
+`runtime_s` はウォームアップ実行後に計測します。
 - `compare_Fo_nx{nx}_ny{ny}_nz{nz}_M{M}_Fos{Folist}.txt`（列: `Fo`, `dt`, `steps`, `err_l2`, `err_max`, `runtime_s`）
 - `history_compare_Fo_nx{nx}_ny{ny}_nz{nz}_M{M}_Fos{Folist}.png`
 - `history_Fo{Fo}_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`（各 Fo の履歴）
@@ -107,6 +110,7 @@ julia --project scripts/compare_alpha.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-
 ```
 出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（存在しない場合は作成）。
 `run_config.toml` と `run_summary.toml` に実行条件と結果を記録します。
+`runtime_s` はウォームアップ実行後に計測します。
 - `compare_alpha_nx{nx}_ny{ny}_nz{nz}_M{M}_alphas{Alist}.txt`（列: `alpha`, `dt`, `steps`, `err_l2`, `err_max`, `runtime_s`）
 - `history_compare_alpha_nx{nx}_ny{ny}_nz{nz}_M{M}_alphas{Alist}.png`
 - `history_alpha{alpha}_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`（各 alpha の履歴）

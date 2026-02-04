@@ -20,6 +20,14 @@ function make_run_dir(output_dir; prefix="run")
     return run_dir
 end
 
+function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol, output_dir::String)
+    warm_dir = joinpath(output_dir, "_warmup")
+    isdir(warm_dir) || mkpath(warm_dir)
+    warm_config = SolverConfig(config.nx, config.ny, config.nz, config.M, config.dt, 1, 0.0)
+    solve(warm_config, prob; bc_order=bc_order, output_dir=warm_dir)
+    rm(warm_dir; recursive=true, force=true)
+end
+
 function parse_fo_list(s::String)
     parts = split(s, ",")
     Fos = Float64[]
@@ -125,10 +133,20 @@ function main()
         "epsilon" => epsilon,
         "alpha" => alpha,
         "bc_order" => string(bc_order),
+        "warmup" => true,
     )
     open(joinpath(run_dir, "run_config.toml"), "w") do io
         TOML.print(io, run_config)
     end
+
+    warm_fo = Fos[1]
+    if warm_fo > 0.5
+        warm_fo = 0.5
+    end
+    warm_dt = warm_fo / denom
+    warm_config = SolverConfig(nx, ny, nz, M, warm_dt, 1, 0.0)
+    warm_prob, _ = make_problem(warm_config; alpha=alpha)
+    warmup_solve(warm_config, warm_prob, bc_order, run_dir)
 
     results = Vector{Tuple{Float64, Float64, Int, Float64, Float64, Float64, String}}()
     for fo in Fos
