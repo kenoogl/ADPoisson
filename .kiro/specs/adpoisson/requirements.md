@@ -25,7 +25,8 @@
   - 擬似時間ステップの履歴をファイルに出力する
     - ファイル名: `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
     - 出力列: `step`, `err_l2`, `res_l2`（`res_l2` は初期残差で相対化した残差L2）
-    - 出力先は指定可能（デフォルト: `results/`）
+    - 出力先は指定可能（デフォルト: `results/`）。実行ごとに `run_YYYYMMDD_HHMMSS/` を作成し、その配下に保存する
+    - 実行条件と結果を `run_config.toml` / `run_summary.toml` に記録する
   - 擬似時間刻みの条件は拡散数で管理する（推奨条件として採用）。拡散数（$\nu=1$）は
     $$Fo=\Delta t\left(\frac{1}{\Delta x^2}+\frac{1}{\Delta y^2}+\frac{1}{\Delta z^2}\right)$$
     と定義し、明示的安定性の推奨条件として $Fo \le 1/2$ を満たす

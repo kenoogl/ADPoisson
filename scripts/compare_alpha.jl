@@ -20,21 +20,27 @@ function make_run_dir(output_dir; prefix="run")
     return run_dir
 end
 
-function parse_ms_list(s::String)
+function parse_alpha_list(s::String)
     parts = split(s, ",")
-    Ms = Int[]
+    alphas = Float64[]
     for p in parts
         t = strip(p)
         isempty(t) && continue
-        push!(Ms, parse(Int, t))
+        push!(alphas, parse(Float64, t))
     end
-    isempty(Ms) && error("Ms list is empty")
-    return sort(unique(Ms))
+    isempty(alphas) && error("alpha list is empty")
+    return alphas
+end
+
+function format_alpha_tag(alpha::Real)
+    s = @sprintf("%.3g", alpha)
+    s = replace(s, "." => "p", "-" => "m", "+" => "")
+    return s
 end
 
 function parse_args(args)
     opts = default_cli_options()
-    opts["Ms"] = "2,4,6,8,10"
+    opts["alphas"] = "0.5,1.0,1.5"
     opts["output_dir"] = "results"
     opts["Fo"] = nothing
 
@@ -49,8 +55,8 @@ function parse_args(args)
                 opts["bc_order"] = args[i + 1]
             elseif key == "max-steps" || key == "max_steps"
                 opts["max_steps"] = parse(Int, args[i + 1])
-            elseif key == "Ms" || key == "ms"
-                opts["Ms"] = args[i + 1]
+            elseif key == "alphas" || key == "alpha-list" || key == "alpha_list"
+                opts["alphas"] = args[i + 1]
             elseif key == "output-dir" || key == "output_dir"
                 opts["output_dir"] = args[i + 1]
             elseif key == "Fo" || key == "fo"
@@ -82,15 +88,15 @@ end
 
 function main()
     opts = parse_args(ARGS)
-    Ms = parse_ms_list(string(opts["Ms"]))
+    alphas = parse_alpha_list(string(opts["alphas"]))
 
     nx = Int(opts["nx"])
     ny = Int(opts["ny"])
     nz = Int(opts["nz"])
+    M = Int(opts["M"])
     dt = opts["dt"]
     max_steps = Int(opts["max_steps"])
     epsilon = opts["epsilon"]
-    alpha = opts["alpha"]
     bc_order = Symbol(opts["bc_order"])
     output_dir = string(opts["output_dir"])
     run_dir = make_run_dir(output_dir)
@@ -117,22 +123,22 @@ function main()
     end
 
     println("run config:")
-    @printf("  nx=%d ny=%d nz=%d\n", nx, ny, nz)
+    @printf("  nx=%d ny=%d nz=%d M=%d\n", nx, ny, nz, M)
     @printf("  dt=%.3e max_steps=%d epsilon=%.3e\n", dt, max_steps, epsilon)
-    @printf("  alpha=%.6f bc_order=%s\n", alpha, string(bc_order))
-    @printf("  Ms=%s\n", join(Ms, ","))
+    @printf("  bc_order=%s\n", string(bc_order))
+    @printf("  alphas=%s\n", join(alphas, ","))
     @printf("  output_dir=%s\n", output_dir)
     @printf("  run_dir=%s\n", run_dir)
 
     run_config = Dict(
         "timestamp" => Dates.format(now(), dateformat"yyyy-mm-ddTHH:MM:SSzzzz"),
-        "script" => "scripts/compare_taylor.jl",
+        "script" => "scripts/compare_alpha.jl",
         "output_dir" => output_dir,
         "run_dir" => run_dir,
         "nx" => nx,
         "ny" => ny,
         "nz" => nz,
-        "Ms" => Ms,
+        "M" => M,
         "dt" => dt,
         "Fo" => fo,
         "Fo_requested" => fo_requested,
@@ -140,15 +146,15 @@ function main()
         "dt_clipped" => dt_clipped,
         "max_steps" => max_steps,
         "epsilon" => epsilon,
-        "alpha" => alpha,
+        "alphas" => alphas,
         "bc_order" => string(bc_order),
     )
     open(joinpath(run_dir, "run_config.toml"), "w") do io
         TOML.print(io, run_config)
     end
 
-    results = Vector{Tuple{Int, Int, Float64, Float64, Float64, String}}()
-    for M in Ms
+    results = Vector{Tuple{Float64, Float64, Int, Float64, Float64, Float64, String}}()
+    for alpha in alphas
         config = SolverConfig(nx, ny, nz, M, dt, max_steps, epsilon)
         prob, _ = make_problem(config; alpha=alpha)
         t_start = time()
@@ -158,40 +164,46 @@ function main()
         err_l2, err_max = ADPoisson.error_stats_precomputed(sol.u, u_exact, prob, config)
         tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(M)_steps$(sol.iter)"
         history_path = joinpath(run_dir, "history_$(tag).txt")
-        push!(results, (M, sol.iter, err_l2, err_max, runtime, history_path))
+        alpha_tag = format_alpha_tag(alpha)
+        history_path_alpha = joinpath(run_dir, "history_alpha$(alpha_tag)_$(tag).txt")
+        if history_path != history_path_alpha
+            mv(history_path, history_path_alpha; force=true)
+        end
+        push!(results, (alpha, dt, sol.iter, err_l2, err_max, runtime, history_path_alpha))
     end
 
-    summary_tag = "nx$(nx)_ny$(ny)_nz$(nz)_Ms$(join(Ms, "-"))"
-    summary_path = joinpath(run_dir, "compare_M_$(summary_tag).txt")
+    alpha_tag_list = join(map(format_alpha_tag, alphas), "-")
+    summary_tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(M)_alphas$(alpha_tag_list)"
+    summary_path = joinpath(run_dir, "compare_alpha_$(summary_tag).txt")
     open(summary_path, "w") do io
-        println(io, "# M steps err_l2 err_max runtime_s")
-        for (M, steps, err_l2, err_max, runtime, _) in results
-            @printf(io, "%d %d %.6e %.6e %.6f\n", M, steps, err_l2, err_max, runtime)
+        println(io, "# alpha dt steps err_l2 err_max runtime_s")
+        for (alpha, dt, steps, err_l2, err_max, runtime, _) in results
+            @printf(io, "%.6g %.6e %d %.6e %.6e %.6f\n", alpha, dt, steps, err_l2, err_max, runtime)
         end
     end
 
     p = plot(xlabel="step", ylabel="res_l2 (relative)", yscale=:log10,
              title="Convergence history (res_l2)")
-    for (M, _, _, _, _, history_path) in results
+    for (alpha, _, _, _, _, _, history_path) in results
         steps, res = load_history(history_path)
-        plot!(p, steps, res; label="M=$(M)")
+        plot!(p, steps, res; label=@sprintf("alpha=%.3g", alpha))
     end
-    plot_path = joinpath(run_dir, "history_compare_$(summary_tag).png")
+    plot_path = joinpath(run_dir, "history_compare_alpha_$(summary_tag).png")
     png(p, plot_path)
 
     run_summary = Dict(
         "summary_file" => basename(summary_path),
         "plot_file" => basename(plot_path),
-        "history_files" => [basename(r[6]) for r in results],
+        "history_files" => [basename(r[7]) for r in results],
     )
     open(joinpath(run_dir, "run_summary.toml"), "w") do io
         TOML.print(io, run_summary)
     end
 
     println("summary:")
-    for (M, steps, err_l2, err_max, runtime, _) in results
-        @printf("  M=%d steps=%d err_l2=%.3e err_max=%.3e runtime_s=%.3f\n",
-                M, steps, err_l2, err_max, runtime)
+    for (alpha, dt, steps, err_l2, err_max, runtime, _) in results
+        @printf("  alpha=%.3g dt=%.3e steps=%d err_l2=%.3e err_max=%.3e runtime_s=%.3f\n",
+                alpha, dt, steps, err_l2, err_max, runtime)
     end
     @info "outputs" summary=summary_path plot=plot_path
 end

@@ -20,23 +20,28 @@ function make_run_dir(output_dir; prefix="run")
     return run_dir
 end
 
-function parse_ms_list(s::String)
+function parse_fo_list(s::String)
     parts = split(s, ",")
-    Ms = Int[]
+    Fos = Float64[]
     for p in parts
         t = strip(p)
         isempty(t) && continue
-        push!(Ms, parse(Int, t))
+        push!(Fos, parse(Float64, t))
     end
-    isempty(Ms) && error("Ms list is empty")
-    return sort(unique(Ms))
+    isempty(Fos) && error("Fo list is empty")
+    return sort(unique(Fos))
+end
+
+function format_fo_tag(fo::Real)
+    s = @sprintf("%.3g", fo)
+    s = replace(s, "." => "p", "-" => "m", "+" => "")
+    return s
 end
 
 function parse_args(args)
     opts = default_cli_options()
-    opts["Ms"] = "2,4,6,8,10"
+    opts["Fos"] = "0.1,0.2,0.3,0.4,0.5"
     opts["output_dir"] = "results"
-    opts["Fo"] = nothing
 
     i = 1
     while i <= length(args)
@@ -49,12 +54,10 @@ function parse_args(args)
                 opts["bc_order"] = args[i + 1]
             elseif key == "max-steps" || key == "max_steps"
                 opts["max_steps"] = parse(Int, args[i + 1])
-            elseif key == "Ms" || key == "ms"
-                opts["Ms"] = args[i + 1]
+            elseif key == "Fos" || key == "fos"
+                opts["Fos"] = args[i + 1]
             elseif key == "output-dir" || key == "output_dir"
                 opts["output_dir"] = args[i + 1]
-            elseif key == "Fo" || key == "fo"
-                opts["Fo"] = parse(Float64, args[i + 1])
             else
                 if key == "nx" || key == "ny" || key == "nz" || key == "M"
                     opts[key] = parse(Int, args[i + 1])
@@ -82,12 +85,12 @@ end
 
 function main()
     opts = parse_args(ARGS)
-    Ms = parse_ms_list(string(opts["Ms"]))
+    Fos = parse_fo_list(string(opts["Fos"]))
 
     nx = Int(opts["nx"])
     ny = Int(opts["ny"])
     nz = Int(opts["nz"])
-    dt = opts["dt"]
+    M = Int(opts["M"])
     max_steps = Int(opts["max_steps"])
     epsilon = opts["epsilon"]
     alpha = opts["alpha"]
@@ -99,45 +102,25 @@ function main()
     dy = 1.0 / ny
     dz = 1.0 / nz
     denom = 1 / dx^2 + 1 / dy^2 + 1 / dz^2
-    dt_source = "dt"
-    fo_requested = nothing
-    if opts["Fo"] !== nothing
-        fo_requested = opts["Fo"]
-        dt = fo_requested / denom
-        dt_source = "Fo"
-    end
-    fo = dt * denom
-    dt_clipped = false
-    if fo > 0.5
-        dt_requested = dt
-        dt = 0.5 / denom
-        fo = 0.5
-        dt_clipped = true
-        @printf("Fo > 0.5; dt clipped: %.3e -> %.3e (Fo=0.5)\n", dt_requested, dt)
-    end
 
     println("run config:")
-    @printf("  nx=%d ny=%d nz=%d\n", nx, ny, nz)
-    @printf("  dt=%.3e max_steps=%d epsilon=%.3e\n", dt, max_steps, epsilon)
+    @printf("  nx=%d ny=%d nz=%d M=%d\n", nx, ny, nz, M)
+    @printf("  max_steps=%d epsilon=%.3e\n", max_steps, epsilon)
     @printf("  alpha=%.6f bc_order=%s\n", alpha, string(bc_order))
-    @printf("  Ms=%s\n", join(Ms, ","))
+    @printf("  Fos=%s\n", join(Fos, ","))
     @printf("  output_dir=%s\n", output_dir)
     @printf("  run_dir=%s\n", run_dir)
 
     run_config = Dict(
         "timestamp" => Dates.format(now(), dateformat"yyyy-mm-ddTHH:MM:SSzzzz"),
-        "script" => "scripts/compare_taylor.jl",
+        "script" => "scripts/compare_fo.jl",
         "output_dir" => output_dir,
         "run_dir" => run_dir,
         "nx" => nx,
         "ny" => ny,
         "nz" => nz,
-        "Ms" => Ms,
-        "dt" => dt,
-        "Fo" => fo,
-        "Fo_requested" => fo_requested,
-        "dt_source" => dt_source,
-        "dt_clipped" => dt_clipped,
+        "M" => M,
+        "Fos" => Fos,
         "max_steps" => max_steps,
         "epsilon" => epsilon,
         "alpha" => alpha,
@@ -147,8 +130,12 @@ function main()
         TOML.print(io, run_config)
     end
 
-    results = Vector{Tuple{Int, Int, Float64, Float64, Float64, String}}()
-    for M in Ms
+    results = Vector{Tuple{Float64, Float64, Int, Float64, Float64, Float64, String}}()
+    for fo in Fos
+        dt = fo / denom
+        if fo > 0.5
+            @printf("Fo > 0.5; running with Fo=%.3g (dt=%.3e)\n", fo, dt)
+        end
         config = SolverConfig(nx, ny, nz, M, dt, max_steps, epsilon)
         prob, _ = make_problem(config; alpha=alpha)
         t_start = time()
@@ -158,40 +145,46 @@ function main()
         err_l2, err_max = ADPoisson.error_stats_precomputed(sol.u, u_exact, prob, config)
         tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(M)_steps$(sol.iter)"
         history_path = joinpath(run_dir, "history_$(tag).txt")
-        push!(results, (M, sol.iter, err_l2, err_max, runtime, history_path))
+        fo_tag = format_fo_tag(fo)
+        history_path_fo = joinpath(run_dir, "history_Fo$(fo_tag)_$(tag).txt")
+        if history_path != history_path_fo
+            mv(history_path, history_path_fo; force=true)
+        end
+        push!(results, (fo, dt, sol.iter, err_l2, err_max, runtime, history_path_fo))
     end
 
-    summary_tag = "nx$(nx)_ny$(ny)_nz$(nz)_Ms$(join(Ms, "-"))"
-    summary_path = joinpath(run_dir, "compare_M_$(summary_tag).txt")
+    fo_tag_list = join(map(format_fo_tag, Fos), "-")
+    summary_tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(M)_Fos$(fo_tag_list)"
+    summary_path = joinpath(run_dir, "compare_Fo_$(summary_tag).txt")
     open(summary_path, "w") do io
-        println(io, "# M steps err_l2 err_max runtime_s")
-        for (M, steps, err_l2, err_max, runtime, _) in results
-            @printf(io, "%d %d %.6e %.6e %.6f\n", M, steps, err_l2, err_max, runtime)
+        println(io, "# Fo dt steps err_l2 err_max runtime_s")
+        for (fo, dt, steps, err_l2, err_max, runtime, _) in results
+            @printf(io, "%.6g %.6e %d %.6e %.6e %.6f\n", fo, dt, steps, err_l2, err_max, runtime)
         end
     end
 
     p = plot(xlabel="step", ylabel="res_l2 (relative)", yscale=:log10,
              title="Convergence history (res_l2)")
-    for (M, _, _, _, _, history_path) in results
+    for (fo, _, _, _, _, _, history_path) in results
         steps, res = load_history(history_path)
-        plot!(p, steps, res; label="M=$(M)")
+        plot!(p, steps, res; label=@sprintf("Fo=%.3g", fo))
     end
-    plot_path = joinpath(run_dir, "history_compare_$(summary_tag).png")
+    plot_path = joinpath(run_dir, "history_compare_Fo_$(summary_tag).png")
     png(p, plot_path)
 
     run_summary = Dict(
         "summary_file" => basename(summary_path),
         "plot_file" => basename(plot_path),
-        "history_files" => [basename(r[6]) for r in results],
+        "history_files" => [basename(r[7]) for r in results],
     )
     open(joinpath(run_dir, "run_summary.toml"), "w") do io
         TOML.print(io, run_summary)
     end
 
     println("summary:")
-    for (M, steps, err_l2, err_max, runtime, _) in results
-        @printf("  M=%d steps=%d err_l2=%.3e err_max=%.3e runtime_s=%.3f\n",
-                M, steps, err_l2, err_max, runtime)
+    for (fo, dt, steps, err_l2, err_max, runtime, _) in results
+        @printf("  Fo=%.3g dt=%.3e steps=%d err_l2=%.3e err_max=%.3e runtime_s=%.3f\n",
+                fo, dt, steps, err_l2, err_max, runtime)
     end
     @info "outputs" summary=summary_path plot=plot_path
 end

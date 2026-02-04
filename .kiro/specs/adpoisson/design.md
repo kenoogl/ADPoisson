@@ -220,7 +220,9 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 ### 4. 可視化 (`src/visualization.jl`)
 結果 `Solution` を受け取り、指定された断面 ($y=0.5$等) の分布図と誤差図を描画し、PNG保存する。
 解析解の断面図も保存する（同一解像度なら同一になるため格子情報のみ付与）。
-出力先は `output_dir` で指定し、デフォルトは `results/` とする。命名は以下を基本とする。
+出力先は `output_dir` で指定し、デフォルトは `results/` とする。実行ごとに `run_YYYYMMDD_HHMMSS/` を作成し、その配下に保存する。
+実行条件と結果は `run_config.toml` / `run_summary.toml` に記録する。
+命名は以下を基本とする。
 - `exact_nx{nx}_ny{ny}_nz{nz}.png`
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
 - `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`

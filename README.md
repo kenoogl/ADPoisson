@@ -10,7 +10,7 @@ Taylor級数による擬似時間発展法で 3D Poisson 方程式を解くソ�
 julia --project -e 'using Pkg; Pkg.instantiate()'
 ```
 
-**実行**
+### **実行**
 ```bash
 julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-10 --alpha 1.0 --output-dir results
 ```
@@ -41,13 +41,14 @@ julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-s
 julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); max_steps=Int(ceil(0.5/dt)); config=SolverConfig(n,n,n,4,dt,max_steps,1e-6); prob,_=make_problem(config; alpha=1.0); sol=solve(config, prob; bc_order=:high)'
 ```
 
-出力は `--output-dir` で指定したディレクトリに保存されます（デフォルト: `results/`）:
+出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（デフォルト: `results/`）。
+実行条件と結果の確認用に `run_config.toml` と `run_summary.toml` を出力します。
 - `exact_nx{nx}_ny{ny}_nz{nz}.png`（解析解のため格子情報のみ）
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
 - `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
   - 擬似時間ステップの履歴（`step`, `err_l2`, `res_l2`。`res_l2` は初期残差で相対化した残差L2、`step` は更新回数で初期状態は 0）
 
-**テスト**
+### **テスト**
 ```bash
 julia --project -e 'using Pkg; Pkg.test()'
 ```
@@ -76,13 +77,36 @@ ADPOISSON_FULL_TEST=1 julia --project -e 'using Pkg; Pkg.test()'
 ADPOISSON_TEST_PLOT=1 julia --project -e 'using Pkg; Pkg.test()'
 ```
 
-**Taylor次数比較**
+### **Taylor次数比較**
 指定パラメータのまま Taylor 展開次数 `M` のみを変化させ、収束解と履歴を比較します。
 ```bash
 julia --project scripts/compare_taylor.jl --nx 32 --ny 32 --nz 32 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --Ms 2,4,6,8,10 --output-dir results
 ```
 `--Fo` を指定した場合は `dt` より優先されます。`Fo > 0.5` の場合は、比較スクリプト内で `dt` を `Fo=0.5` になるようにクリップします。
-出力は `--output-dir` で指定したディレクトリに保存されます（存在しない場合は作成）:
+出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（存在しない場合は作成）。
+`run_config.toml` と `run_summary.toml` に実行条件と結果を記録します。
 - `compare_M_nx{nx}_ny{ny}_nz{nz}_Ms{Mlist}.txt`（列: `M`, `steps`, `err_l2`, `err_max`, `runtime_s`）
 - `history_compare_nx{nx}_ny{ny}_nz{nz}_Ms{Mlist}.png`
 - `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`（各 M の履歴）
+
+### **Fo比較**
+指定パラメータのまま拡散数 `Fo` のみを変化させ、収束解と履歴を比較します。
+```bash
+julia --project scripts/compare_fo.jl --nx 32 --ny 32 --nz 32 --M 10 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --Fos 0.1,0.2,0.3,0.4,0.5 --output-dir results
+```
+出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（存在しない場合は作成）。
+`run_config.toml` と `run_summary.toml` に実行条件と結果を記録します。
+- `compare_Fo_nx{nx}_ny{ny}_nz{nz}_M{M}_Fos{Folist}.txt`（列: `Fo`, `dt`, `steps`, `err_l2`, `err_max`, `runtime_s`）
+- `history_compare_Fo_nx{nx}_ny{ny}_nz{nz}_M{M}_Fos{Folist}.png`
+- `history_Fo{Fo}_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`（各 Fo の履歴）
+
+### **alpha比較**
+指定パラメータのまま境界条件パラメータ `alpha` のみを変化させ、収束解と履歴を比較します。
+```bash
+julia --project scripts/compare_alpha.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --bc-order high --alphas 0.5,1.0,1.5 --output-dir results
+```
+出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（存在しない場合は作成）。
+`run_config.toml` と `run_summary.toml` に実行条件と結果を記録します。
+- `compare_alpha_nx{nx}_ny{ny}_nz{nz}_M{M}_alphas{Alist}.txt`（列: `alpha`, `dt`, `steps`, `err_l2`, `err_max`, `runtime_s`）
+- `history_compare_alpha_nx{nx}_ny{ny}_nz{nz}_M{M}_alphas{Alist}.png`
+- `history_alpha{alpha}_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`（各 alpha の履歴）
