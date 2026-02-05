@@ -1,0 +1,17 @@
+dt_source = "Fo"
+output_dir = "results"
+bc_order = "spec"
+dt = 4.0690104166666664e-5
+nx = 64
+M = 4
+solver = "taylor"
+nz = 64
+script = "scripts/main.jl"
+alpha = 1.0
+ny = 64
+Fo = 0.5
+max_steps = 10000
+run_dir = "results/run_20260205_184919"
+epsilon = 1.0e-8
+timestamp = "2026-02-05T18:49:19zzzz"
+warmup = true

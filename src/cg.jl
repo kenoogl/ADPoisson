@@ -65,8 +65,7 @@ function cg_solve_with_runtime!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryCon
     bc0 = zero_boundary_conditions(T)
 
     apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
-    compute_residual!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    r0 = l2_norm_interior(r, config)
+    r0 = compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     denom = max(r0, one(r0))
 
     history = IOBuffer()

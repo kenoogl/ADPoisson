@@ -96,8 +96,7 @@ function sor_solve_with_runtime!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryCo
     diag = 2 * (inv_dx2 + inv_dy2 + inv_dz2)
 
     apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
-    compute_residual!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    r0 = l2_norm_interior(r, config)
+    r0 = compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     denom = max(r0, one(r0))
 
     history = IOBuffer()
@@ -114,8 +113,7 @@ function sor_solve_with_runtime!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryCo
         apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
         sor_sweep_color!(u, f, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 1)
 
-        compute_residual!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-        res = l2_norm_interior(r, config) / denom
+        res = compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz) / denom
         err_l2 = l2_error_exact_precomputed(u, u_exact, prob, config)
         @printf(history, "%d %.6e %.6e\n", step, err_l2, res)
         iter = step
@@ -153,8 +151,7 @@ function ssor_solve_with_runtime!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryC
     diag = 2 * (inv_dx2 + inv_dy2 + inv_dz2)
 
     apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
-    compute_residual!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    r0 = l2_norm_interior(r, config)
+    r0 = compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     denom = max(r0, one(r0))
 
     history = IOBuffer()
@@ -183,8 +180,7 @@ function ssor_solve_with_runtime!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryC
         sor_sweep_color_backward!(u, f, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 0)
         sor_sweep_color_backward!(u, f, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 1)
 
-        compute_residual!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-        res = l2_norm_interior(r, config) / denom
+        res = compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz) / denom
         err_l2 = l2_error_exact_precomputed(u, u_exact, prob, config)
         @printf(history, "%d %.6e %.6e\n", step, err_l2, res)
         iter = step

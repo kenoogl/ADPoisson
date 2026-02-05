@@ -177,6 +177,29 @@ function compute_residual!(r::Array{T,3}, u::Array{T,3}, f::Array{T,3},
 end
 
 """
+    compute_residual_norm!(r, u, f, config; Lx=1, Ly=1, Lz=1)
+
+Compute residual r = Lu - f and return its L2 norm (interior only) in one pass.
+"""
+function compute_residual_norm!(r::Array{T,3}, u::Array{T,3}, f::Array{T,3},
+                                config::SolverConfig; Lx=1, Ly=1, Lz=1) where {T}
+    dx, dy, dz = grid_spacing(config; Lx=Lx, Ly=Ly, Lz=Lz)
+    inv_dx2 = one(T) / (dx * dx)
+    inv_dy2 = one(T) / (dy * dy)
+    inv_dz2 = one(T) / (dz * dz)
+    s = zero(T)
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        Lu = (u[i+1, j, k] - 2 * u[i, j, k] + u[i-1, j, k]) * inv_dx2 +
+             (u[i, j+1, k] - 2 * u[i, j, k] + u[i, j-1, k]) * inv_dy2 +
+             (u[i, j, k+1] - 2 * u[i, j, k] + u[i, j, k-1]) * inv_dz2
+        val = Lu - f[i, j, k]
+        r[i, j, k] = val
+        s += val * val
+    end
+    return sqrt(s)
+end
+
+"""
     l2_norm_interior(a, config)
 
 Compute L2 norm over interior points.
@@ -280,8 +303,7 @@ function solve_core(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, out
 
     iter = 0
     apply_bc!(sol.u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
-    compute_residual!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    r0 = l2_norm_interior(r, config)
+    r0 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     denom = max(r0, one(r0))
     history = IOBuffer()
     println(history, "# step err_l2 res_l2")
@@ -289,8 +311,7 @@ function solve_core(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, out
     t_start = time()
     while true
         apply_bc!(sol.u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
-        compute_residual!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-        res_l2 = l2_norm_interior(r, config)
+        res_l2 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
         rnorm = res_l2 / denom
         err_l2 = l2_error_exact_precomputed(sol.u, u_exact, prob, config)
         @printf(history, "%d %.6e %.6e\n", iter, err_l2, rnorm)
