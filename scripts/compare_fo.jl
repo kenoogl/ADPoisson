@@ -29,6 +29,8 @@ function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol,
         solve(warm_config, prob; bc_order=bc_order, output_dir=warm_dir)
     elseif solver === :sor
         sor_solve(prob, warm_config; bc_order=bc_order, output_dir=warm_dir)
+    elseif solver === :ssor
+        ssor_solve(prob, warm_config; bc_order=bc_order, output_dir=warm_dir)
     elseif solver === :cg
         cg_solve(prob, warm_config; precond=cg_precond, bc_order=bc_order, output_dir=warm_dir)
     else
@@ -113,8 +115,8 @@ function main()
     Fos = parse_fo_list(string(opts["Fos"]))
     solver = Symbol(lowercase(opts["solver"]))
     cg_precond = Symbol(lowercase(opts["cg_precond"]))
-    (solver === :taylor || solver === :sor || solver === :cg) ||
-        error("solver must be taylor/sor/cg")
+    (solver === :taylor || solver === :sor || solver === :ssor || solver === :cg) ||
+        error("solver must be taylor/sor/ssor/cg")
     (cg_precond === :ssor || cg_precond === :none) ||
         error("cg-precond must be ssor/none")
     if solver !== :taylor
@@ -201,6 +203,8 @@ function main()
             solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir)
         elseif solver === :sor
             sor_solve_with_runtime(prob, config; bc_order=bc_order, output_dir=run_dir)
+        elseif solver === :ssor
+            ssor_solve_with_runtime(prob, config; bc_order=bc_order, output_dir=run_dir)
         else
             cg_solve_with_runtime(prob, config; precond=cg_precond, bc_order=bc_order, output_dir=run_dir)
         end
@@ -211,6 +215,8 @@ function main()
             joinpath(run_dir, "history_$(tag).txt")
         elseif solver === :sor
             joinpath(run_dir, "history_sor_nx$(nx)_ny$(ny)_nz$(nz)_steps$(sol.iter).txt")
+        elseif solver === :ssor
+            joinpath(run_dir, "history_ssor_nx$(nx)_ny$(ny)_nz$(nz)_steps$(sol.iter).txt")
         else
             joinpath(run_dir, "history_cg_nx$(nx)_ny$(ny)_nz$(nz)_steps$(sol.iter).txt")
         end

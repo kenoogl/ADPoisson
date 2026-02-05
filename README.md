@@ -30,7 +30,7 @@ julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-s
 - `--alpha`: 境界条件パラメータ（デフォルト: 1.0）
 - `--bc-order`: 境界条件の次数（`spec` または `high`、デフォルト: `spec`）
 - `--output-dir`: 出力ディレクトリ（デフォルト: `results`。存在しない場合は作成）
-- `--solver`: 実行するソルバー（`taylor` / `sor` / `cg`、デフォルト: `taylor`）
+- `--solver`: 実行するソルバー（`taylor` / `sor` / `ssor` / `cg`、デフォルト: `taylor`）
 - `--cg-precond`: CG の前処理（`ssor` / `none`、デフォルト: `none`）
 
 **推奨設定**
