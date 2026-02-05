@@ -143,6 +143,7 @@ function taylor_series_update!(u_next::Array{T,3}, buffers::TaylorBuffers3D{T},
     end
 
     u_next .= acc
+    apply_bc!(u_next, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
     return u_next
 end
 
@@ -318,7 +319,6 @@ function solve_core(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, out
         end
         taylor_series_update!(sol.u, buffers, f, bc, config, prob; bc_order=bc_order)
         iter += 1
-        apply_bc!(sol.u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
         res_l2 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
         rnorm = res_l2 / denom
     end
