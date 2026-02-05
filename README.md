@@ -35,9 +35,12 @@ julia --project scripts/main.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsi
 - `--output-dir`: 出力ディレクトリ（デフォルト: `results`。存在しない場合は作成）
 - `--solver`: 実行するソルバー（`taylor` / `sor` / `ssor` / `cg`、デフォルト: `taylor`）
 - `--cg-precond`: CG の前処理（`ssor` / `none`、デフォルト: `none`）
-- `--mg-interval`: 疑似MG補正の適用間隔（0 で無効、デフォルト: 0）
-- `--mg-dt-scale`: 疑似MGの補正ステップ用 `dt` 係数（デフォルト: 2.0）
-- `--mg-M`: 疑似MGの補正ステップに使う Taylor 次数（デフォルト: 4）
+- `--mg-interval`: MG補正の適用間隔（0 で無効、デフォルト: 0）
+- `--mg-level`: MGレベル（`1`: 疑似MG, `2`: 2-level MG、デフォルト: 1）
+- `--mg-dt-scale`: MG補正ステップ用 `dt` 係数（デフォルト: 2.0）
+- `--mg-M`: MG補正ステップに使う Taylor 次数（デフォルト: 4）
+- `--mg-nu1`: 2-level MG の前スムージング回数（デフォルト: 1）
+- `--mg-nu2`: 2-level MG の後スムージング回数（デフォルト: 1）
 
 **推奨設定**
 - 拡散数 `Fo = Δt(1/Δx^2 + 1/Δy^2 + 1/Δz^2)` を `0.5` 以下にする
@@ -70,7 +73,12 @@ julia --project scripts/main.jl --solver sor --nx 32 --ny 32 --nz 32 --max-steps
 
 **疑似MG（Taylorのみ）実行例**
 ```bash
-julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --output-dir results
+julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-level 1 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --output-dir results
+```
+
+**2-level MG（Taylorのみ）実行例**
+```bash
+julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-level 2 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
 ```
 
 ### **テスト**

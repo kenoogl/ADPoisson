@@ -143,7 +143,7 @@
   - depends: [5a, 6, 8]
   - _Requirements: 加速（マルチグリッド的アプローチ）_
   - _Design: マルチグリッド的加速_
-- [ ] 17. レベル2（2-level MG）の実装 (`src/mg.jl`)
+- [x] 17. レベル2（2-level MG）の実装 (`src/mg.jl`)
   - coarse grid の生成（$N/2$）と $R/P$ の実装
   - coarse 境界値は boundary function から直接評価
   - depends: [16]
