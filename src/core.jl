@@ -308,11 +308,9 @@ function solve_core(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, out
     history = IOBuffer()
     println(history, "# step err_l2 res_l2")
 
+    rnorm = r0 / denom
     t_start = time()
     while true
-        apply_bc!(sol.u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
-        res_l2 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-        rnorm = res_l2 / denom
         err_l2 = l2_error_exact_precomputed(sol.u, u_exact, prob, config)
         @printf(history, "%d %.6e %.6e\n", iter, err_l2, rnorm)
         if rnorm <= config.epsilon || iter >= config.max_steps
@@ -320,6 +318,9 @@ function solve_core(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, out
         end
         taylor_series_update!(sol.u, buffers, f, bc, config, prob; bc_order=bc_order)
         iter += 1
+        apply_bc!(sol.u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
+        res_l2 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+        rnorm = res_l2 / denom
     end
     runtime = time() - t_start
 
