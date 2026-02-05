@@ -93,7 +93,11 @@ ADPOISSON_TEST_PLOT=1 julia --project -e 'using Pkg; Pkg.test()'
 ### **Taylor次数比較**
 指定パラメータのまま Taylor 展開次数 `M` のみを変化させ、収束解と履歴を比較します。
 ```bash
-julia --project scripts/compare_taylor.jl --nx 32 --ny 32 --nz 32 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --Ms 2,4,6,8,10 --output-dir results
+julia --project scripts/compare_taylor.jl --solver taylor --nx 32 --ny 32 --nz 32 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --Ms 2,4,6,8,10 --output-dir results
+```
+反復解法を使う場合は `--solver` を指定します。`--solver sor/cg` の場合、`Ms` は無視され、`--M` の値のみが使われます。
+```bash
+julia --project scripts/compare_taylor.jl --solver sor --nx 32 --ny 32 --nz 32 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --output-dir results
 ```
 `--Fo` を指定した場合は `dt` より優先されます。`Fo > 0.5` の場合は、比較スクリプト内で `dt` を `Fo=0.5` になるようにクリップします。
 `runtime_s` はウォームアップ実行後に計測します。
@@ -106,7 +110,11 @@ julia --project scripts/compare_taylor.jl --nx 32 --ny 32 --nz 32 --dt 1e-4 --ma
 ### **Fo比較**
 指定パラメータのまま拡散数 `Fo` のみを変化させ、収束解と履歴を比較します。
 ```bash
-julia --project scripts/compare_fo.jl --nx 32 --ny 32 --nz 32 --M 10 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --Fos 0.1,0.2,0.3,0.4,0.5 --output-dir results
+julia --project scripts/compare_fo.jl --solver taylor --nx 32 --ny 32 --nz 32 --M 10 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --Fos 0.1,0.2,0.3,0.4,0.5 --output-dir results
+```
+反復解法を使う場合は `--solver` を指定します。`--solver sor/cg` の場合、`Fo` は `dt` にしか影響しないため結果が変わらない可能性があります。
+```bash
+julia --project scripts/compare_fo.jl --solver cg --cg-precond none --nx 32 --ny 32 --nz 32 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --Fos 0.1,0.2,0.3 --output-dir results
 ```
 出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（存在しない場合は作成）。
 `run_config.toml` と `run_summary.toml` に実行条件と結果を記録します。
@@ -118,7 +126,11 @@ julia --project scripts/compare_fo.jl --nx 32 --ny 32 --nz 32 --M 10 --max-steps
 ### **alpha比較**
 指定パラメータのまま境界条件パラメータ `alpha` のみを変化させ、収束解と履歴を比較します。
 ```bash
-julia --project scripts/compare_alpha.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --bc-order high --alphas 0.5,1.0,1.5 --output-dir results
+julia --project scripts/compare_alpha.jl --solver taylor --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --bc-order high --alphas 0.5,1.0,1.5 --output-dir results
+```
+反復解法を使う場合は `--solver` を指定します。
+```bash
+julia --project scripts/compare_alpha.jl --solver sor --nx 32 --ny 32 --nz 32 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --bc-order high --alphas 0.5,1.0,1.5 --output-dir results
 ```
 出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（存在しない場合は作成）。
 `run_config.toml` と `run_summary.toml` に実行条件と結果を記録します。

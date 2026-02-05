@@ -20,11 +20,20 @@ function make_run_dir(output_dir; prefix="run")
     return run_dir
 end
 
-function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol, output_dir::String)
+function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol,
+                      output_dir::String, solver::Symbol, cg_precond::Symbol)
     warm_dir = joinpath(output_dir, "_warmup")
     isdir(warm_dir) || mkpath(warm_dir)
     warm_config = SolverConfig(config.nx, config.ny, config.nz, config.M, config.dt, 1, 0.0)
-    solve(warm_config, prob; bc_order=bc_order, output_dir=warm_dir)
+    if solver === :taylor
+        solve(warm_config, prob; bc_order=bc_order, output_dir=warm_dir)
+    elseif solver === :sor
+        sor_solve(prob, warm_config; bc_order=bc_order, output_dir=warm_dir)
+    elseif solver === :cg
+        cg_solve(prob, warm_config; precond=cg_precond, bc_order=bc_order, output_dir=warm_dir)
+    else
+        error("unknown solver: $(solver)")
+    end
     rm(warm_dir; recursive=true, force=true)
 end
 
@@ -51,6 +60,8 @@ function parse_args(args)
     opts["alphas"] = "0.5,1.0,1.5"
     opts["output_dir"] = "results"
     opts["Fo"] = nothing
+    opts["solver"] = "taylor"
+    opts["cg_precond"] = "none"
 
     i = 1
     while i <= length(args)
@@ -69,6 +80,10 @@ function parse_args(args)
                 opts["output_dir"] = args[i + 1]
             elseif key == "Fo" || key == "fo"
                 opts["Fo"] = parse(Float64, args[i + 1])
+            elseif key == "solver"
+                opts["solver"] = lowercase(args[i + 1])
+            elseif key == "cg-precond" || key == "cg_precond"
+                opts["cg_precond"] = lowercase(args[i + 1])
             else
                 if key == "nx" || key == "ny" || key == "nz" || key == "M"
                     opts[key] = parse(Int, args[i + 1])
@@ -97,6 +112,18 @@ end
 function main()
     opts = parse_args(ARGS)
     alphas = parse_alpha_list(string(opts["alphas"]))
+    solver = Symbol(lowercase(opts["solver"]))
+    cg_precond = Symbol(lowercase(opts["cg_precond"]))
+    (solver === :taylor || solver === :sor || solver === :cg) ||
+        error("solver must be taylor/sor/cg")
+    (cg_precond === :ssor || cg_precond === :none) ||
+        error("cg-precond must be ssor/none")
+    if solver !== :taylor
+        if opts["Fo"] !== nothing
+            @printf("solver=%s: Fo/dt are not used in iterative solvers; Fo option is ignored\n", string(solver))
+        end
+        @printf("solver=%s: --M is optional and ignored for iterative solvers\n", string(solver))
+    end
 
     nx = Int(opts["nx"])
     ny = Int(opts["ny"])
@@ -133,6 +160,10 @@ function main()
     println("run config:")
     @printf("  nx=%d ny=%d nz=%d M=%d\n", nx, ny, nz, M)
     @printf("  dt=%.3e max_steps=%d epsilon=%.3e\n", dt, max_steps, epsilon)
+    @printf("  solver=%s\n", string(solver))
+    if solver === :cg
+        @printf("  cg_precond=%s\n", string(cg_precond))
+    end
     @printf("  bc_order=%s\n", string(bc_order))
     @printf("  alphas=%s\n", join(alphas, ","))
     @printf("  output_dir=%s\n", output_dir)
@@ -146,17 +177,21 @@ function main()
         "nx" => nx,
         "ny" => ny,
         "nz" => nz,
-        "M" => M,
-        "dt" => dt,
-        "Fo" => fo,
-        "dt_source" => dt_source,
-        "dt_clipped" => dt_clipped,
         "max_steps" => max_steps,
         "epsilon" => epsilon,
         "alphas" => alphas,
         "bc_order" => string(bc_order),
+        "solver" => string(solver),
+        "cg_precond" => string(cg_precond),
         "warmup" => true,
     )
+    if solver === :taylor
+        run_config["M"] = M
+        run_config["dt"] = dt
+        run_config["Fo"] = fo
+        run_config["dt_source"] = dt_source
+        run_config["dt_clipped"] = dt_clipped
+    end
     if fo_requested !== nothing
         run_config["Fo_requested"] = fo_requested
     end
@@ -166,17 +201,29 @@ function main()
 
     warm_config = SolverConfig(nx, ny, nz, M, dt, 1, 0.0)
     warm_prob, _ = make_problem(warm_config; alpha=alphas[1])
-    warmup_solve(warm_config, warm_prob, bc_order, run_dir)
+    warmup_solve(warm_config, warm_prob, bc_order, run_dir, solver, cg_precond)
 
     results = Vector{Tuple{Float64, Float64, Int, Float64, Float64, Float64, String}}()
     for alpha in alphas
         config = SolverConfig(nx, ny, nz, M, dt, max_steps, epsilon)
         prob, _ = make_problem(config; alpha=alpha)
-        sol, runtime = solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir)
+        sol, runtime = if solver === :taylor
+            solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir)
+        elseif solver === :sor
+            sor_solve_with_runtime(prob, config; bc_order=bc_order, output_dir=run_dir)
+        else
+            cg_solve_with_runtime(prob, config; precond=cg_precond, bc_order=bc_order, output_dir=run_dir)
+        end
         u_exact = ADPoisson.exact_solution_array(sol, prob, config)
         err_l2, err_max = ADPoisson.error_stats_precomputed(sol.u, u_exact, prob, config)
         tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(M)_steps$(sol.iter)"
-        history_path = joinpath(run_dir, "history_$(tag).txt")
+        history_path = if solver === :taylor
+            joinpath(run_dir, "history_$(tag).txt")
+        elseif solver === :sor
+            joinpath(run_dir, "history_sor_nx$(nx)_ny$(ny)_nz$(nz)_steps$(sol.iter).txt")
+        else
+            joinpath(run_dir, "history_cg_nx$(nx)_ny$(ny)_nz$(nz)_steps$(sol.iter).txt")
+        end
         alpha_tag = format_alpha_tag(alpha)
         history_path_alpha = joinpath(run_dir, "history_alpha$(alpha_tag)_$(tag).txt")
         if history_path != history_path_alpha
@@ -186,7 +233,7 @@ function main()
     end
 
     alpha_tag_list = join(map(format_alpha_tag, alphas), "-")
-    summary_tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(M)_alphas$(alpha_tag_list)"
+    summary_tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(M)_alphas$(alpha_tag_list)_solver$(solver)"
     summary_path = joinpath(run_dir, "compare_alpha_$(summary_tag).txt")
     open(summary_path, "w") do io
         println(io, "# alpha dt steps err_l2 err_max runtime_s")
