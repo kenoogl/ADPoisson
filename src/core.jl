@@ -148,6 +148,46 @@ function taylor_series_update!(u_next::Array{T,3}, buffers::TaylorBuffers3D{T},
 end
 
 """
+    taylor_series_update_reuse!(u_next, buffers, r0, f, bc, config, prob; bc_order=:spec)
+
+Compute Taylor series update using precomputed residual r0 = Lu - f as the m=0 coefficient.
+"""
+function taylor_series_update_reuse!(u_next::Array{T,3}, buffers::TaylorBuffers3D{T},
+                                     r0::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
+                                     config::SolverConfig, prob::ProblemSpec;
+                                     bc_order=:spec) where {T}
+    if config.M == 0
+        apply_bc!(u_next, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
+        return u_next
+    end
+    bufA = buffers.bufA
+    bufB = buffers.bufB
+    acc = buffers.acc
+
+    bufA .= u_next
+    acc .= u_next
+    dt_pow = one(T)
+
+    bufB .= r0
+    apply_bc!(bufB, bc, 1, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
+    dt_pow *= config.dt
+    accumulate_taylor!(acc, bufB, dt_pow, config)
+    bufA, bufB = bufB, bufA
+
+    for m in 1:config.M-1
+        taylor_step!(bufB, bufA, f, m, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+        apply_bc!(bufB, bc, m + 1, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
+        dt_pow *= config.dt
+        accumulate_taylor!(acc, bufB, dt_pow, config)
+        bufA, bufB = bufB, bufA
+    end
+
+    u_next .= acc
+    apply_bc!(u_next, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
+    return u_next
+end
+
+"""
     compute_source!(f, prob, config)
 
 Fill source term on interior points.
@@ -317,7 +357,7 @@ function solve_core(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, out
         if rnorm <= config.epsilon || iter >= config.max_steps
             break
         end
-        taylor_series_update!(sol.u, buffers, f, bc, config, prob; bc_order=bc_order)
+        taylor_series_update_reuse!(sol.u, buffers, r, f, bc, config, prob; bc_order=bc_order)
         iter += 1
         res_l2 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
         rnorm = res_l2 / denom
