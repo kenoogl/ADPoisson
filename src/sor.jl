@@ -53,6 +53,21 @@ function ssor_solve(prob::ProblemSpec, config::SolverConfig;
 end
 
 """
+    ssor_solve!(sol, f, bc, prob, config; omega=1.0, output_dir="results", bc_order=:spec)
+
+RBSSOR solver with residual history output.
+"""
+function ssor_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions,
+                     prob::ProblemSpec, config::SolverConfig;
+                     omega::T=one(T), output_dir::AbstractString="results",
+                     bc_order=:spec) where {T<:Real}
+    converged, result, _ = ssor_solve_with_runtime!(sol, f, bc, prob, config;
+                                                    omega=omega, output_dir=output_dir,
+                                                    bc_order=bc_order)
+    return converged, result
+end
+
+"""
     sor_solve(prob, config; omega=1.0, output_dir="results", bc_order=:spec)
 
 Solve Poisson equation using RB-SOR and return Solution.

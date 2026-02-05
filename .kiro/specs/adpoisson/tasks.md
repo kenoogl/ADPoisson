@@ -128,7 +128,7 @@
   - depends: [8, 12, 13]
   - _Requirements: 検証機能_
   - _Design: 比較スクリプト_
-- [ ] 15. Phase 4 テスト (`test/solvers.jl`)
+- [x] 15. Phase 4 テスト (`test/solvers.jl`)
   - SOR: 小規模問題で既知解との一致を確認
   - CG: SORと同一問題で収束を確認
   - depends: [12, 13]

@@ -20,7 +20,7 @@ export solve, solve_with_runtime, make_problem, boundary_from_prob
 export exact_solution, source_term, dirichlet_bc
 export plot_slice
 export sor_solve, sor_solve!, sor_solve_with_runtime
-export ssor_solve, ssor_solve_with_runtime
+export ssor_solve, ssor_solve!, ssor_solve_with_runtime
 export cg_solve, cg_solve!, cg_solve_with_runtime
 
 end # module
