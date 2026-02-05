@@ -20,7 +20,7 @@ function parse_args(args)
             if key == "input-dir" || key == "input_dir"
                 input_dir = args[i + 1]
             elseif key == "input-dirs" || key == "input_dirs"
-                input_dirs = split(args[i + 1], ",")
+                input_dirs = String.(split(args[i + 1], ","))
             elseif key == "input-glob" || key == "input_glob"
                 input_globs = String.(split(args[i + 1], ","))
             elseif key == "output-dir" || key == "output_dir"
