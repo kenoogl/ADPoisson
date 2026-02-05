@@ -139,3 +139,20 @@ julia --project scripts/compare_alpha.jl --solver sor --nx 32 --ny 32 --nz 32 --
 - `compare_alpha_nx{nx}_ny{ny}_nz{nz}_M{M}_alphas{Alist}.txt`（列: `alpha`, `dt`, `steps`, `err_l2`, `err_max`, `runtime_s`）
 - `history_compare_alpha_nx{nx}_ny{ny}_nz{nz}_M{M}_alphas{Alist}.png`
 - `history_alpha{alpha}_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`（各 alpha の履歴）
+
+### **実行結果の一覧化**
+指定ディレクトリ配下の `run_*/run_config.toml` と `run_summary.toml` を読み、Markdown の一覧表を生成します。
+```bash
+julia --project scripts/collect_runs.jl --input-dir results
+```
+デフォルト出力: `results/run_summary.md`
+
+### **実行結果の比較プロット**
+指定ディレクトリ配下の `run_*/` を走査し、`solver+precond+nx` を項目名として比較プロットを出力します。
+`steps=20000` の項目は除外されます。
+```bash
+julia --project scripts/plot_run_summary.jl --input-dir results
+```
+出力:
+- `results/compare_errors.png`（`err_l2` と `err_max` の double-Y）
+- `results/compare_runtime_steps.png`（`runtime` と `steps` の double-Y）
