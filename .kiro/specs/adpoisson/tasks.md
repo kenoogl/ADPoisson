@@ -109,6 +109,7 @@
 - [ ] 12b. SSOR ソルバーの実装 (`src/sor.jl`)
   - RBSSOR（4スイープ対称）による反復
   - 収束履歴の出力（`step`, `err_l2`, `res_l2`）
+  - SOR と同一ファイル（`src/sor.jl`）に実装する
   - depends: [5a, 6, 12]
   - _Requirements: 線形ソルバー_
   - _Design: 線形ソルバー（SSOR）_
@@ -131,3 +132,32 @@
   - SOR: 小規模問題で既知解との一致を確認
   - CG: SORと同一問題で収束を確認
   - depends: [12, 13]
+  - _Requirements: 線形ソルバー_
+  - _Design: テスト戦略_
+
+## Phase 5: マルチグリッド的加速（検討）
+> Phase 3 完了後に開始
+- [ ] 16. レベル1（疑似MG）の実装 (`src/mg.jl`)
+  - 残差 $r=f-Lu$ を用いた補正ステップを実装
+  - 補正ステップも Fo クリップを適用
+  - depends: [5a, 6, 8]
+  - _Requirements: 加速（マルチグリッド的アプローチ）_
+  - _Design: マルチグリッド的加速_
+- [ ] 17. レベル2（2-level MG）の実装 (`src/mg.jl`)
+  - coarse grid の生成（$N/2$）と $R/P$ の実装
+  - coarse 境界値は boundary function から直接評価
+  - depends: [16]
+  - _Requirements: 加速（マルチグリッド的アプローチ）_
+  - _Design: マルチグリッド的加速_
+- [ ] 18. レベル3（V-cycle MG）の実装 (`src/mg.jl`)
+  - 再帰 V-cycle（最粗格子で直接解法）
+  - レベル依存で $\Delta t$ / $M$ を変更可能
+  - depends: [17]
+  - _Requirements: 加速（マルチグリッド的アプローチ）_
+  - _Design: マルチグリッド的加速_
+- [ ] 19. Phase 5 テスト (`test/mg.jl`)
+  - レベル1: 補正後に残差が減少することを確認
+  - レベル2: 2-level MG で収束を確認
+  - depends: [16, 17, 18]
+  - _Requirements: 加速（マルチグリッド的アプローチ）_
+  - _Design: テスト戦略_

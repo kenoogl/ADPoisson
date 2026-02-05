@@ -43,13 +43,16 @@ ADPoisson/
 │   ├── visualization.jl   # 可視化機能 (Plots.jl / Heatmap)
 │   ├── sor.jl             # SOR ソルバー
 │   ├── cg.jl              # CG ソルバー（SSOR 前処理）
+│   ├── mg.jl              # マルチグリッド補助（制限/補間/サイクル）
 │   └── factory.jl         # インスタンス生成ヘルパー
 ├── scripts/
 │   └── main.jl            # 実行スクリプト (CLI引数処理)
 └── test/
     ├── runtests.jl        # テストエントリ
     ├── core.jl            # Taylor係数/更新テスト
-    └── problems.jl        # 解析解/ソース項テスト
+    ├── problems.jl        # 解析解/ソース項テスト
+    ├── solvers.jl         # SOR/SSOR/CG テスト
+    └── mg.jl              # MG テスト
 ```
 
 ### モジュール依存関係
@@ -59,6 +62,9 @@ ADPoisson/
 - `problems.jl` → `types.jl` に依存
 - `visualization.jl` → `types.jl`, `problems.jl` に依存
 - `factory.jl` → `types.jl`, `problems.jl`, `boundary.jl` に依存
+- `sor.jl` → `types.jl`, `boundary.jl`, `core.jl` に依存
+- `cg.jl` → `types.jl`, `boundary.jl`, `core.jl`, `sor.jl` に依存
+- `mg.jl` → `types.jl`, `boundary.jl`, `core.jl` に依存
 
 ### 技術スタック
 | Layer | Choice / Version | Role in Feature | Notes |
@@ -169,10 +175,9 @@ CG 実行前に前提を満たすことを確認する。
 - 更新は RB-SOR（2色）で行う
 - 反復ごとに残差 $r=Lu-f$ を計算し、相対残差 $\|r\|_2/\max(\|r_0\|_2,1)$ を記録
 - 収束判定は $\epsilon$ と `max_steps`（擬似時間と同様）
- - 履歴ファイル命名: `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
- - 緩和係数 $\omega=1.0$ を固定（将来変更可能な形で実装）
- - 反復ループ（内点更新）は `if` 分岐なしで構成する
- - 反復ループ（内点更新）は `if` 分岐なしで構成する
+- 履歴ファイル命名: `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+- 緩和係数 $\omega=1.0$ を固定（将来変更可能な形で実装）
+- 反復ループ（内点更新）は `if` 分岐なしで構成する
 
 #### SSOR（RBSSOR）
 - RBSSOR の対称 4 スイープで更新する
@@ -185,9 +190,9 @@ CG 実行前に前提を満たすことを確認する。
   - 前進 R→B、後退 B→R、前進 B→R、後退 R→B（R=red, B=black）
   - 緩和係数 $\omega=1.0$ を固定（将来変更可能な形で実装）
 - 収束判定・履歴出力は SOR と同じ基準
- - 出力は `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` に記録する
- - 履歴ファイル命名: `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
- - 反復ループ（内点更新）は `if` 分岐なしで構成する
+- 出力は `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` に記録する
+- 履歴ファイル命名: `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+- 反復ループ（内点更新）は `if` 分岐なしで構成する
 
 #### 関数シグネチャ（主要）
 ```julia
@@ -219,7 +224,38 @@ sor_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::Proble
 ssor_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::ProblemSpec,
            config::SolverConfig; omega::T = one(T), output_dir::AbstractString = "results",
            bc_order::Symbol = :spec) where {T}
+```
 
+### 2c. マルチグリッド的加速（レベル1/2/3）
+Taylor 擬似時間法のスムーザ特性を利用し、低周波誤差の緩和を狙う。
+
+#### レベル1（疑似MG）
+- 数ステップごとに残差 $r=f-Lu$ を計算し、補正用の Taylor ステップを実行する
+- 補正ステップの $\Delta t$ も Fo クリップを適用して安定性を確保する
+
+#### レベル2（2-level MG）
+- coarse grid を 1段生成し、制限 $R$ / 補間 $P$ により補正を加える
+- coarse grid の境界値は boundary function から直接評価する
+- 制限 $R$ は 3D full-weighting、補間 $P$ は trilinear を基本とする
+
+#### レベル3（V-cycle MG）
+- 再帰的に V-cycle を構成し、最粗格子で直接解法（または厳密解）を使う
+- レベル依存で $\Delta t$ や Taylor 次数 $M$ を変更できる
+
+#### 関数シグネチャ（案）
+```julia
+restrict_full_weighting!(rc::Array{T,3}, rf::Array{T,3},
+                         cfg_f::SolverConfig, cfg_c::SolverConfig) where {T}
+prolong_trilinear!(ef::Array{T,3}, ec::Array{T,3},
+                   cfg_f::SolverConfig, cfg_c::SolverConfig) where {T}
+vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
+        cfg_f::SolverConfig, level::Int, max_level::Int;
+        nu1::Int=2, nu2::Int=2) where {T}
+pseudo_mg_correction!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
+                      cfg::SolverConfig; interval::Int=5) where {T}
+```
+
+```julia
 cg_solve(prob::ProblemSpec, config::SolverConfig;
          precond::Symbol = :none, omega_ssor::Real = 1.0,
          output_dir::AbstractString = "results", bc_order::Symbol = :spec)
@@ -290,6 +326,12 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 - `exact_nx{nx}_ny{ny}_nz{nz}.png`
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
 - `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
+- `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+- `history_ssor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+- `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+- `history_mg1_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+- `history_mg2_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+- `history_vcycle_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 
 ## データモデル
 - **グリッド**: Cell-centered。インデックス $i=2 \dots N_x+1$ が内点。

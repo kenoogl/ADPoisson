@@ -39,6 +39,7 @@
   - 線形系は内点のみの方程式として構成し、Dirichlet境界の寄与は RHS に取り込む
   - 収束履歴（`step`, `err_l2`, `res_l2`）を出力し、収束性を比較できるようにする
     - SOR: `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+    - SSOR: `history_ssor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
     - CG: `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
   - 反復ループ内（内点更新）では `if` 分岐を使わず、事前に条件分岐を外へ出す
   - SOR の緩和係数 $\omega$ は 1.0 を既定値とする（後で変更可能な形で実装する）
@@ -46,11 +47,33 @@
     - 指定: `:none`（既定） / `:ssor`
     - SSOR 使用時の緩和係数 $\omega$ は 1.0 を使用（後で変更可能な形で実装する）
     - **RBSSOR の対称スイープ順**: 前進 R→B、後退 B→R、前進 B→R、後退 R→B（R=red, B=black）
-    - **注意**: `order=:high` は ghost が複数内点に依存するため、色ごとに境界更新が必要になる。
-      SSOR 前処理では `order=:spec` を固定し、色ごとの更新を行わない。
+    - SSOR 前処理では `order=:spec` を固定する（`order=:high` は使わない）
   - SSOR ソルバー（RBSSOR）を選択可能とする
+  - CLI は `--solver` で `taylor/sor/ssor/cg` を指定し、`--cg-precond` は `--solver=cg` のときのみ有効
+- [ ] **加速（マルチグリッド的アプローチ）**
+  - Taylor 擬似時間法の残差履歴が「高周波が早く減衰し低周波が残る」挙動であるため、マルチグリッド的加速を検討する
+  - **レベル1（疑似MG）**:
+    - 数ステップごとに残差 $r=f-Lu$ を計算し、強めの Taylor ステップ（大きめ $\Delta t$ / 低次）で補正を入れる簡易方式
+    - 粗格子を明示的に持たず、低周波成分の緩和を狙う
+    - 補正ステップでも Fo クリップを適用し、$\Delta t$ は既存の Fo 上限を超えない
+    - 適用条件は Taylor 法と同一（高次境界を使う場合は `nx,ny,nz>=4`）
+  - **レベル2（2-level MG）**:
+    - coarse grid を 1段（$N/2$）構築し、制限 $R$ / 補間 $P$ による補正を行う
+    - スムーザは Taylor 擬似時間ステップ（$\nu_1,\nu_2$ 回）を用いる
+    - 粗格子サイズは内点数で $(n_x,n_y,n_z)\mapsto(\lfloor n_x/2\rfloor,\lfloor n_y/2\rfloor,\lfloor n_z/2\rfloor)$ とし、
+      いずれかが 4 未満になった時点で粗格子生成を終了する（2-level MG の適用条件は $n_x,n_y,n_z\ge 8$）
+    - 制限 $R$ は 3D full-weighting、補間 $P$ は trilinear を基本とする
+    - 粗格子境界値は fine からの転送ではなく、境界条件関数から直接評価する
+  - **レベル3（V-cycle MG）**:
+    - 多段の V-cycle（必要なら W-cycle）を構成し、最粗格子では直接解法または厳密解を用いる
+    - レベル依存で $\Delta t$ や Taylor 次数 $M$ を変えることを許容する
+    - 最粗格子は内点数がいずれか 4 未満になった時点で停止する
   - CG が適用可能であること（係数行列の対称性・正定性）を確認する
   - 出力は実行ごとの `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` を記録する
+  - MG の履歴ファイル命名:
+    - レベル1: `history_mg1_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+    - レベル2: `history_mg2_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+    - レベル3: `history_vcycle_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 - [ ] **Taylor級数漸化式（3D Poisson, 擬似時間）**
   - 詳細は `/Users/Daily/Development/ADTM/ADPoisson漸化式.md` に準拠
   - Poisson: $\nabla^2 u = f$ を擬似時間で $u_t = \nabla^2 u - f$ として解く
@@ -122,10 +145,11 @@
   - ghost更新は面のみで、エッジ、コーナーは更新しない（評価・出力も内点のみ）
   - $\alpha$ の値はコマンドラインで指定。デフォルト1.0
 
-- Julia実装
-  - パラメータはコマンドラインで指定
+## Julia実装
+- パラメータはコマンドラインで指定
   - $N_x, N_y, N_z$（または `n` で等方格子指定）, Taylor展開次数 $M$, $\Delta t$ または $Fo$, 最大ステップ数, 境界条件次数（`spec`/`high`）, 出力ディレクトリ
-  - ソルバー指定（`taylor`/`sor`/`ssor`/`cg`）と CG 前処理指定（`ssor`/`none`）
+  - ソルバー指定: `--solver taylor|sor|ssor|cg`（既定 `taylor`）
+  - 前処理指定: `--cg-precond none|ssor`（`--solver=cg` の場合のみ有効）
   - 可視化は $y=0.5$ の断面（XZ面）をヒートマップ/コンターで表示し、解析解との誤差も可視化（出力先は指定可能）
   - 擬似時間ステップ履歴のファイル出力を行う
 
