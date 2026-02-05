@@ -77,6 +77,8 @@ function parse_args(args)
                 opts["Fos"] = args[i + 1]
             elseif key == "output-dir" || key == "output_dir"
                 opts["output_dir"] = args[i + 1]
+            elseif key == "n"
+                opts["n"] = parse(Int, args[i + 1])
             elseif key == "solver"
                 opts["solver"] = lowercase(args[i + 1])
             elseif key == "cg-precond" || key == "cg_precond"
@@ -120,9 +122,15 @@ function main()
         @printf("solver=%s: --M is optional and ignored for iterative solvers\n", string(solver))
     end
 
-    nx = Int(opts["nx"])
-    ny = Int(opts["ny"])
-    nz = Int(opts["nz"])
+    if opts["n"] !== nothing
+        nx = Int(opts["n"])
+        ny = Int(opts["n"])
+        nz = Int(opts["n"])
+    else
+        nx = Int(opts["nx"])
+        ny = Int(opts["ny"])
+        nz = Int(opts["nz"])
+    end
     M = Int(opts["M"])
     max_steps = Int(opts["max_steps"])
     epsilon = opts["epsilon"]

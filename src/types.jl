@@ -67,6 +67,7 @@ const DEFAULT_CLI_OPTS = Dict{String,Any}(
     "nx" => 16,
     "ny" => 16,
     "nz" => 16,
+    "n" => nothing,
     "M" => 10,
     "dt" => 2e-4,
     "max_steps" => 10000,
