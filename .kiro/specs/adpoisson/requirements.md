@@ -27,6 +27,7 @@
     - 出力列: `step`, `err_l2`, `res_l2`（`res_l2` は初期残差で相対化した残差L2）
     - 出力先は指定可能（デフォルト: `results/`）。実行ごとに `run_YYYYMMDD_HHMMSS/` を作成し、その配下に保存する
     - 実行条件と結果を `run_config.toml` / `run_summary.toml` に記録する
+      - `run_summary.toml` には最終反復時の `res_l2` を記録する
   - 擬似時間刻みの条件は拡散数で管理する（推奨条件として採用）。拡散数（$\nu=1$）は
     $$Fo=\Delta t\left(\frac{1}{\Delta x^2}+\frac{1}{\Delta y^2}+\frac{1}{\Delta z^2}\right)$$
     と定義し、明示的安定性の推奨条件として $Fo \le 1/2$ を満たす
@@ -47,6 +48,7 @@
     - **RBSSOR の対称スイープ順**: 前進 R→B、後退 B→R、前進 B→R、後退 R→B（R=red, B=black）
     - **注意**: `order=:high` は ghost が複数内点に依存するため、色ごとに境界更新が必要になる。
       SSOR 前処理では `order=:spec` を固定し、色ごとの更新を行わない。
+  - SSOR ソルバー（RBSSOR）を選択可能とする
   - CG が適用可能であること（係数行列の対称性・正定性）を確認する
   - 出力は実行ごとの `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` を記録する
 - [ ] **Taylor級数漸化式（3D Poisson, 擬似時間）**
@@ -122,8 +124,8 @@
 
 - Julia実装
   - パラメータはコマンドラインで指定
-  - $N_x, N_y, N_z$, Taylor展開次数 $M$, $\Delta t$ または $Fo$, 最大ステップ数, 境界条件次数（`spec`/`high`）, 出力ディレクトリ
-  - ソルバー指定（`taylor`/`sor`/`cg`）と CG 前処理指定（`ssor`/`none`）
+  - $N_x, N_y, N_z$（または `n` で等方格子指定）, Taylor展開次数 $M$, $\Delta t$ または $Fo$, 最大ステップ数, 境界条件次数（`spec`/`high`）, 出力ディレクトリ
+  - ソルバー指定（`taylor`/`sor`/`ssor`/`cg`）と CG 前処理指定（`ssor`/`none`）
   - 可視化は $y=0.5$ の断面（XZ面）をヒートマップ/コンターで表示し、解析解との誤差も可視化（出力先は指定可能）
   - 擬似時間ステップ履歴のファイル出力を行う
 

@@ -7,6 +7,31 @@ using Plots
 using Dates
 using TOML
 
+function last_res_l2(path::AbstractString)
+    last = nothing
+    open(path, "r") do io
+        for line in eachline(io)
+            s = strip(line)
+            if isempty(s) || startswith(s, "#")
+                continue
+            end
+            last = s
+        end
+    end
+    if last === nothing
+        return nothing
+    end
+    parts = split(last)
+    if length(parts) < 3
+        return nothing
+    end
+    try
+        return parse(Float64, parts[3])
+    catch
+        return nothing
+    end
+end
+
 function make_run_dir(output_dir; prefix="run")
     mkpath(output_dir)
     ts = Dates.format(now(), dateformat"yyyymmdd_HHMMSS")
@@ -191,7 +216,7 @@ function main()
     warm_prob, _ = make_problem(warm_config; alpha=alpha)
     warmup_solve(warm_config, warm_prob, bc_order, run_dir, solver, cg_precond)
 
-    results = Vector{Tuple{Float64, Float64, Int, Float64, Float64, Float64, String}}()
+    results = Vector{Tuple{Float64, Float64, Int, Float64, Float64, Float64, Float64, String}}()
     for fo in Fos
         dt = fo / denom
         if fo > 0.5
@@ -225,22 +250,23 @@ function main()
         if history_path != history_path_fo
             mv(history_path, history_path_fo; force=true)
         end
-        push!(results, (fo, dt, sol.iter, err_l2, err_max, runtime, history_path_fo))
+        res_l2 = last_res_l2(history_path_fo)
+        push!(results, (fo, dt, sol.iter, err_l2, err_max, res_l2, runtime, history_path_fo))
     end
 
     fo_tag_list = join(map(format_fo_tag, Fos), "-")
     summary_tag = "nx$(nx)_ny$(ny)_nz$(nz)_M$(M)_Fos$(fo_tag_list)_solver$(solver)"
     summary_path = joinpath(run_dir, "compare_Fo_$(summary_tag).txt")
     open(summary_path, "w") do io
-        println(io, "# Fo dt steps err_l2 err_max runtime_s")
-        for (fo, dt, steps, err_l2, err_max, runtime, _) in results
-            @printf(io, "%.6g %.6e %d %.6e %.6e %.6f\n", fo, dt, steps, err_l2, err_max, runtime)
+        println(io, "# Fo dt steps err_l2 err_max res_l2 runtime_s")
+        for (fo, dt, steps, err_l2, err_max, res_l2, runtime, _) in results
+            @printf(io, "%.6g %.6e %d %.6e %.6e %.6e %.6f\n", fo, dt, steps, err_l2, err_max, res_l2, runtime)
         end
     end
 
     p = plot(xlabel="step", ylabel="res_l2 (relative)", yscale=:log10,
              title="Convergence history (res_l2)")
-    for (fo, _, _, _, _, _, history_path) in results
+    for (fo, _, _, _, _, _, _, history_path) in results
         steps, res = load_history(history_path)
         plot!(p, steps, res; label=@sprintf("Fo=%.3g", fo))
     end
@@ -250,16 +276,17 @@ function main()
     run_summary = Dict(
         "summary_file" => basename(summary_path),
         "plot_file" => basename(plot_path),
-        "history_files" => [basename(r[7]) for r in results],
+        "history_files" => [basename(r[8]) for r in results],
+        "res_l2_list" => [r[6] for r in results],
     )
     open(joinpath(run_dir, "run_summary.toml"), "w") do io
         TOML.print(io, run_summary)
     end
 
     println("summary:")
-    for (fo, dt, steps, err_l2, err_max, runtime, _) in results
-        @printf("  Fo=%.3g dt=%.3e steps=%d err_l2=%.3e err_max=%.3e runtime_s=%.3f\n",
-                fo, dt, steps, err_l2, err_max, runtime)
+    for (fo, dt, steps, err_l2, err_max, res_l2, runtime, _) in results
+        @printf("  Fo=%.3g dt=%.3e steps=%d err_l2=%.3e err_max=%.3e res_l2=%.3e runtime_s=%.3f\n",
+                fo, dt, steps, err_l2, err_max, res_l2, runtime)
     end
     @info "outputs" summary=summary_path plot=plot_path
 end

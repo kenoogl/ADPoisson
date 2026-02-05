@@ -81,6 +81,7 @@ function collect_rows(input_dir::String)
         row["err_l2"] = safe_get(sum, "err_l2", "")
         row["err_max"] = safe_get(sum, "err_max", "")
         row["runtime_s"] = safe_get(sum, "runtime_s", "")
+        row["res_l2"] = safe_get(sum, "res_l2", "")
         push!(rows, row)
     end
     return rows
@@ -90,10 +91,10 @@ function write_markdown(path::String, rows)
     open(path, "w") do io
         println(io, "# Run Summary")
         println(io)
-        println(io, "| dir | nx | ny | nz | solver | precond | alpha | epsilon | bc_order | steps | err_l2 | err_max | runtime_s |")
-        println(io, "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+        println(io, "| dir | nx | ny | nz | solver | precond | alpha | epsilon | bc_order | steps | err_l2 | err_max | res_l2 | runtime_s |")
+        println(io, "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
         for r in rows
-            println(io, "| $(r["dir"]) | $(format_int(r["nx"])) | $(format_int(r["ny"])) | $(format_int(r["nz"])) | $(r["solver"]) | $(r["cg_precond"]) | $(format_float(r["alpha"])) | $(format_float(r["epsilon"])) | $(r["bc_order"]) | $(format_int(r["steps"])) | $(format_float(r["err_l2"])) | $(format_float(r["err_max"])) | $(format_float(r["runtime_s"])) |")
+            println(io, "| $(r["dir"]) | $(format_int(r["nx"])) | $(format_int(r["ny"])) | $(format_int(r["nz"])) | $(r["solver"]) | $(r["cg_precond"]) | $(format_float(r["alpha"])) | $(format_float(r["epsilon"])) | $(r["bc_order"]) | $(format_int(r["steps"])) | $(format_float(r["err_l2"])) | $(format_float(r["err_max"])) | $(format_float(r["res_l2"])) | $(format_float(r["runtime_s"])) |")
         end
     end
 end

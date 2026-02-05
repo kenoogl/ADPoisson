@@ -60,7 +60,7 @@ function collect_rows(input_dir::String)
         row["precond"] = safe_get(cfg, "cg_precond", "none")
         row["nx"] = safe_get(cfg, "nx", 0)
         row["err_l2"] = safe_get(sum, "err_l2", NaN)
-        row["err_max"] = safe_get(sum, "err_max", NaN)
+        row["res_l2"] = safe_get(sum, "res_l2", NaN)
         row["runtime_s"] = safe_get(sum, "runtime_s", NaN)
         row["steps"] = steps
         push!(rows, row)
@@ -78,9 +78,7 @@ function make_labels(rows)
         end
         push!(groups[key], r)
     end
-    keys_sorted = sort(collect(keys(groups))) do a, b
-        a[1] == b[1] ? a[2] < b[2] : a[1] < b[1]
-    end
+    keys_sorted = sort(collect(keys(groups)); by = k -> (k[1], k[2]))
     ordered = Vector{Dict{String,Any}}()
     labels = String[]
     for key in keys_sorted
@@ -88,7 +86,17 @@ function make_labels(rows)
         sort!(rs, by=r -> r["nx"])
         for r in rs
             push!(ordered, r)
-            push!(labels, @sprintf("%s+%s+nx%d", r["solver"], r["precond"], r["nx"]))
+            solver_sym = r["solver"] == "taylor" ? "T" :
+                         r["solver"] == "sor" ? "SOR" :
+                         r["solver"] == "ssor" ? "SGS" :
+                         r["solver"] == "cg" ? "CG" : "?"
+            precond_sym = r["precond"] == "ssor" ? "SGS" :
+                          r["precond"] == "none" ? "" : "?"
+            if precond_sym == ""
+                push!(labels, @sprintf("%s-%d", solver_sym, r["nx"]))
+            else
+                push!(labels, @sprintf("%s-%s-%d", solver_sym, precond_sym, r["nx"]))
+            end
         end
     end
     return ordered, labels
@@ -97,10 +105,12 @@ end
 function plot_err(rows, labels, output_dir)
     x = 1:length(rows)
     err_l2 = [r["err_l2"] for r in rows]
-    err_max = [r["err_max"] for r in rows]
-    p = plot(x, err_l2; label="err_l2", ylabel="err_l2", yscale=:log10,
-             xticks=(x, labels), xrotation=45, legend=:topleft)
-    plot!(p, x, err_max; label="err_max", yaxis=:right, ylabel="err_max", yscale=:log10)
+    res_l2 = [r["res_l2"] for r in rows]
+    p = plot(x, err_l2; label="err_l2", ylabel="error", yscale=:log10,
+             yticks=10.0 .^ (-16:1:0),
+             xticks=(x, labels), xrotation=60, xtickfontsize=8, bottom_margin=8Plots.mm,
+             legend=:right, marker=:circle)
+    plot!(p, x, res_l2; label="res_l2", marker=:diamond)
     out = joinpath(output_dir, "compare_errors.png")
     png(p, out)
 end
@@ -109,9 +119,15 @@ function plot_runtime_steps(rows, labels, output_dir)
     x = 1:length(rows)
     runtime = [r["runtime_s"] for r in rows]
     steps = [r["steps"] for r in rows]
-    p = plot(x, runtime; label="runtime_s", ylabel="runtime_s",
-             xticks=(x, labels), xrotation=45, legend=:topleft)
-    plot!(p, x, steps; label="steps", yaxis=:right, ylabel="steps")
+    rt_min = minimum(runtime)
+    rt_max = maximum(runtime)
+    rt_pad = rt_max == rt_min ? rt_max * 0.1 + 1e-12 : (rt_max - rt_min) * 0.1
+    p = plot(x, runtime; label="Runtime", ylabel="Runtime",
+             xticks=(x, labels), xrotation=60, xtickfontsize=8, bottom_margin=8Plots.mm,
+             legend=(0.12, 0.75), legendfontsize=8, background_color_legend=:transparent,
+             marker=:circle, color=:blue, ylims=(rt_min - rt_pad, rt_max + rt_pad))
+    p2 = twinx(p)
+    plot!(p2, x, steps; label="Iteration", ylabel="Iteration", marker=:diamond, color=:red)
     out = joinpath(output_dir, "compare_runtime_steps.png")
     png(p, out)
 end

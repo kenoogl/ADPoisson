@@ -5,6 +5,31 @@ using Printf
 using Dates
 using TOML
 
+function last_res_l2(path::AbstractString)
+    last = nothing
+    open(path, "r") do io
+        for line in eachline(io)
+            s = strip(line)
+            if isempty(s) || startswith(s, "#")
+                continue
+            end
+            last = s
+        end
+    end
+    if last === nothing
+        return nothing
+    end
+    parts = split(last)
+    if length(parts) < 3
+        return nothing
+    end
+    try
+        return parse(Float64, parts[3])
+    catch
+        return nothing
+    end
+end
+
 function make_run_dir(output_dir; prefix="run")
     mkpath(output_dir)
     ts = Dates.format(now(), dateformat"yyyymmdd_HHMMSS")
@@ -179,10 +204,12 @@ function main()
     else
         "history_cg_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(sol.iter).txt"
     end
+    res_l2 = last_res_l2(joinpath(run_dir, history_file))
     run_summary = Dict(
         "steps" => sol.iter,
         "err_l2" => err_l2,
         "err_max" => err_max,
+        "res_l2" => res_l2,
         "runtime_s" => runtime,
         "history_file" => history_file,
         "error_plot" => "error_$(tag).png",

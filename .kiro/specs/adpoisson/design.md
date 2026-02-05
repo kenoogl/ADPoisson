@@ -151,11 +151,11 @@ end
     - Taylor係数計算 (再帰的定義)
     - 解更新
 4. 結果返却
-   - まとめて `Fo`, `dt`, `err_l2`, `err_max`, `steps`, `runtime` を表示
+   - まとめて `Fo`, `dt`, `err_l2`, `err_max`, `res_l2`, `steps`, `runtime` を表示
 5. 擬似時間ステップ履歴を `results/` に保存（`history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`）
    - 出力列: `step`, `err_l2`, `res_l2`（`res_l2` は初期残差で相対化）
 
-### 2b. 線形ソルバー（SOR/CG）
+### 2b. 線形ソルバー（SOR/SSOR/CG）
 擬似時間法とは別に、$\nabla^2 u = f$ を直接解く線形ソルバーを用意する。
 同一の離散化（7点差分、内点のみ、Dirichlet境界）を用い、**相対残差は初期残差で正規化**する。
 
@@ -173,6 +173,10 @@ CG 実行前に前提を満たすことを確認する。
  - 緩和係数 $\omega=1.0$ を固定（将来変更可能な形で実装）
  - 反復ループ（内点更新）は `if` 分岐なしで構成する
  - 反復ループ（内点更新）は `if` 分岐なしで構成する
+
+#### SSOR（RBSSOR）
+- RBSSOR の対称 4 スイープで更新する
+- 履歴ファイル命名: `history_ssor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 
 #### CG（前処理付き）
 - 行列作用は明示行列を組まずに `laplacian!` を用いる
@@ -199,12 +203,20 @@ accumulate_taylor!(acc::Array{T,3}, coeff::Array{T,3}, dt_pow::T) where {T}
 # 係数を保持する場合の評価（検証用途のみ）
 horner_update!(u_new::Array{T,3}, coeffs::TaylorArrays3D{T}, dt::T, M::Int) where {T}
 
-# 線形ソルバー（SOR/CG）
+# 線形ソルバー（SOR/SSOR/CG）
 sor_solve(prob::ProblemSpec, config::SolverConfig;
           omega::Real = 1.0, output_dir::AbstractString = "results",
           bc_order::Symbol = :spec)
 
+ssor_solve(prob::ProblemSpec, config::SolverConfig;
+          omega::Real = 1.0, output_dir::AbstractString = "results",
+          bc_order::Symbol = :spec)
+
 sor_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::ProblemSpec,
+           config::SolverConfig; omega::T = one(T), output_dir::AbstractString = "results",
+           bc_order::Symbol = :spec) where {T}
+
+ssor_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::ProblemSpec,
            config::SolverConfig; omega::T = one(T), output_dir::AbstractString = "results",
            bc_order::Symbol = :spec) where {T}
 
