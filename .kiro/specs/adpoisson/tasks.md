@@ -98,7 +98,7 @@
 
 ## Phase 4: 線形ソルバー（SOR/SSOR/CG）
 > Phase 3 完了後に開始
-- [ ] 12. SOR ソルバーの実装 (`src/sor.jl`)（内点のみ、Dirichlet境界の寄与は RHS に取り込み）
+- [x] 12. SOR ソルバーの実装 (`src/sor.jl`)（内点のみ、Dirichlet境界の寄与は RHS に取り込み）
   - RB-SOR 反復
   - 相対残差 $\|r\|_2/\max(\|r_0\|_2,1)$ による収束判定
   - 収束履歴の出力（`step`, `err_l2`, `res_l2`）
@@ -106,14 +106,14 @@
   - depends: [5a, 6]
   - _Requirements: 線形ソルバー_
   - _Design: 線形ソルバー（SOR）_
-- [ ] 12b. SSOR ソルバーの実装 (`src/sor.jl`)
+- [x] 12b. SSOR ソルバーの実装 (`src/sor.jl`)
   - RBSSOR（4スイープ対称）による反復
   - 収束履歴の出力（`step`, `err_l2`, `res_l2`）
   - SOR と同一ファイル（`src/sor.jl`）に実装する
   - depends: [5a, 6, 12]
   - _Requirements: 線形ソルバー_
   - _Design: 線形ソルバー（SSOR）_
-- [ ] 13. CG ソルバーの実装 (`src/cg.jl`)（前処理: `:none` / `:ssor`）
+- [x] 13. CG ソルバーの実装 (`src/cg.jl`)（前処理: `:none` / `:ssor`）
   - 明示行列を組まず `laplacian!` による行列作用
   - SSOR 前処理（RBSSOR 4 スイープ、対称）
   - 相対残差の収束判定と履歴出力
@@ -121,7 +121,7 @@
   - depends: [5a, 6, 12, 12b]
   - _Requirements: 線形ソルバー_
   - _Design: 線形ソルバー（CG/SSOR）_
-- [ ] 14. 収束性の比較
+- [x] 14. 収束性の比較
   - 擬似時間法（Taylor）と SOR/CG の収束履歴を同一指標で比較
   - 例題は共通の検証問題を使用
   - 比較結果を `run_YYYYMMDD_HHMMSS/` に保存

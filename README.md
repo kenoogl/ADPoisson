@@ -110,6 +110,20 @@ julia --project scripts/compare_taylor.jl --solver sor --nx 32 --ny 32 --nz 32 -
 - `history_compare_nx{nx}_ny{ny}_nz{nz}_Ms{Mlist}.png`
 - `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`（各 M の履歴）
 
+### **ソルバー比較（Taylor/SOR/SSOR/CG）**
+同一条件でソルバーを切り替えて、収束履歴（`res_l2`）を比較します。
+```bash
+julia --project scripts/compare_solvers.jl --solvers taylor,sor,ssor,cg --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --output-dir results
+```
+`--cg-precond` は CG を含む場合のみ使用します（`none`/`ssor`）。
+```bash
+julia --project scripts/compare_solvers.jl --solvers taylor,cg --cg-precond ssor --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --output-dir results
+```
+出力は `--output-dir` 配下の `run_YYYYMMDD_HHMMSS/` に保存されます。
+- `compare_solvers_nx{nx}_ny{ny}_nz{nz}_solver{solverlist}.txt`（列: `solver`, `steps`, `err_l2`, `err_max`, `res_l2`, `runtime_s`）
+- `history_compare_solvers_nx{nx}_ny{ny}_nz{nz}_solver{solverlist}.png`
+- 各ソルバーの履歴ファイル（`history_*`）
+
 ### **Fo比較**
 指定パラメータのまま拡散数 `Fo` のみを変化させ、収束解と履歴を比較します。
 ```bash
