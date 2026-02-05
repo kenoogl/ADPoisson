@@ -1,0 +1,13 @@
+output_dir = "results"
+bc_order = "spec"
+nx = 64
+solver = "sor"
+nz = 64
+script = "scripts/main.jl"
+alpha = 1.0
+ny = 64
+max_steps = 20000
+run_dir = "results/run_20260205_111801"
+epsilon = 1.0e-8
+timestamp = "2026-02-05T11:18:01zzzz"
+warmup = true

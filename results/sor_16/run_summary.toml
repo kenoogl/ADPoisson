@@ -1,0 +1,8 @@
+err_l2 = 0.0017228567799728242
+steps = 406
+runtime_s = 0.011903047561645508
+err_max = 0.007576463515522103
+history_file = "history_sor_nx16_ny16_nz16_steps406.txt"
+exact_plot = "exact_nx16_ny16_nz16.png"
+error_plot = "error_nx16_ny16_nz16_M10_steps406.png"
+res_l2 = 9.80302e-09

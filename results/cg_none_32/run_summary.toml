@@ -1,0 +1,8 @@
+err_l2 = 0.00044174471057282236
+steps = 21
+runtime_s = 0.003173828125
+err_max = 0.0021525252601813927
+history_file = "history_cg_nx32_ny32_nz32_steps21.txt"
+exact_plot = "exact_nx32_ny32_nz32.png"
+error_plot = "error_nx32_ny32_nz32_M10_steps21.png"
+res_l2 = 6.191739e-09
