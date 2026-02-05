@@ -140,11 +140,15 @@ function main()
     solver = Symbol(lowercase(opts["solver"]))
     cg_precond = Symbol(lowercase(opts["cg_precond"]))
     (solver === :taylor || solver === :sor || solver === :ssor || solver === :cg) ||
-        error("solver must be taylor/sor/cg")
+        error("solver must be taylor/sor/ssor/cg")
     (cg_precond === :ssor || cg_precond === :none) ||
         error("cg-precond must be ssor/none")
     output_dir = string(opts["output_dir"])
     run_dir = make_run_dir(output_dir)
+    if solver !== :taylor && bc_order !== :spec
+        @warn "bc-order is only valid for taylor; forcing to spec for iterative solvers" solver=solver bc_order=bc_order
+        bc_order = :spec
+    end
     println("run config:")
     @printf("  nx=%d ny=%d nz=%d M=%d\n", config.nx, config.ny, config.nz, config.M)
     @printf("  dt=%.3e max_steps=%d epsilon=%.3e\n", config.dt, config.max_steps, config.epsilon)
