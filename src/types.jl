@@ -76,6 +76,9 @@ const DEFAULT_CLI_OPTS = Dict{String,Any}(
     "bc_order" => "spec",
     "solver" => "taylor",
     "cg_precond" => "none",
+    "mg_interval" => 0,
+    "mg_dt_scale" => 2.0,
+    "mg_M" => 4,
 )
 
 """

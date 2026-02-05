@@ -325,7 +325,9 @@ function error_stats_precomputed(u::Array{T,3}, uex::Array{T,3},
     return sqrt(s * dx * dy * dz), err_max
 end
 
-function solve_core(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results")
+function solve_core(config::SolverConfig, prob::ProblemSpec;
+                    bc_order=:spec, output_dir="results",
+                    mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4)
     sol = initialize_solution(config, prob)
     bc = boundary_from_prob(prob)
 
@@ -359,6 +361,11 @@ function solve_core(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, out
         end
         taylor_series_update_reuse!(sol.u, buffers, r, f, bc, config, prob; bc_order=bc_order)
         iter += 1
+        if mg_interval > 0 && (iter % mg_interval == 0)
+            pseudo_mg_correction!(sol.u, f, bc, config, prob;
+                                  dt_scale=convert(eltype(sol.u), mg_dt_scale),
+                                  M=mg_M, bc_order=bc_order)
+        end
         res_l2 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
         rnorm = res_l2 / denom
     end
@@ -384,8 +391,11 @@ end
 Main solver loop using Taylor series pseudo-time stepping.
 Returns (Solution, runtime_s) where runtime is the solve loop only.
 """
-function solve_with_runtime(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results")
-    return solve_core(config, prob; bc_order=bc_order, output_dir=output_dir)
+function solve_with_runtime(config::SolverConfig, prob::ProblemSpec;
+                            bc_order=:spec, output_dir="results",
+                            mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4)
+    return solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
+                      mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M)
 end
 
 """
@@ -393,7 +403,9 @@ end
 
 Main solver loop using Taylor series pseudo-time stepping.
 """
-function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results")
-    sol, _ = solve_core(config, prob; bc_order=bc_order, output_dir=output_dir)
+function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results",
+               mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4)
+    sol, _ = solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
+                        mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M)
     return sol
 end

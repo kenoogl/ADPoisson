@@ -12,6 +12,7 @@ include("visualization.jl")
 include("factory.jl")
 include("sor.jl")
 include("cg.jl")
+include("mg.jl")
 
 export ProblemSpec, BoundaryConditions, TaylorBuffers3D, TaylorArrays3D
 export SolverConfig, Solution
@@ -22,5 +23,6 @@ export plot_slice
 export sor_solve, sor_solve!, sor_solve_with_runtime
 export ssor_solve, ssor_solve!, ssor_solve_with_runtime
 export cg_solve, cg_solve!, cg_solve_with_runtime
+export pseudo_mg_correction!
 
 end # module

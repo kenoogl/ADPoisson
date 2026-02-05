@@ -1,0 +1,2 @@
+# M steps err_l2 err_max res_l2 runtime_s
+4 10674 6.132006e-05 1.402505e-04 9.991323e-09 42.943893

@@ -31,9 +31,13 @@ julia --project scripts/main.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsi
   - 相対残差は $\|r\|_2 / \max(\|r_0\|_2, 1)$（$r=Lu-f$、$r_0$ は初期残差、内点のみ評価）
 - `--alpha`: 境界条件パラメータ（デフォルト: 1.0）
 - `--bc-order`: 境界条件の次数（`spec` または `high`、デフォルト: `spec`）
+  - `--solver taylor` の場合のみ有効（反復解法では `spec` に固定）
 - `--output-dir`: 出力ディレクトリ（デフォルト: `results`。存在しない場合は作成）
 - `--solver`: 実行するソルバー（`taylor` / `sor` / `ssor` / `cg`、デフォルト: `taylor`）
 - `--cg-precond`: CG の前処理（`ssor` / `none`、デフォルト: `none`）
+- `--mg-interval`: 疑似MG補正の適用間隔（0 で無効、デフォルト: 0）
+- `--mg-dt-scale`: 疑似MGの補正ステップ用 `dt` 係数（デフォルト: 2.0）
+- `--mg-M`: 疑似MGの補正ステップに使う Taylor 次数（デフォルト: 4）
 
 **推奨設定**
 - 拡散数 `Fo = Δt(1/Δx^2 + 1/Δy^2 + 1/Δz^2)` を `0.5` 以下にする
@@ -62,6 +66,11 @@ julia --project scripts/main.jl --solver cg --cg-precond ssor --nx 32 --ny 32 --
 **反復解法（SOR）実行例**
 ```bash
 julia --project scripts/main.jl --solver sor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
+```
+
+**疑似MG（Taylorのみ）実行例**
+```bash
+julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --output-dir results
 ```
 
 ### **テスト**

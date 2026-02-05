@@ -66,6 +66,9 @@ function parse_args(args)
     opts = default_cli_options()
     opts["output_dir"] = "results"
     opts["Fo"] = nothing
+    opts["mg_interval"] = 0
+    opts["mg_dt_scale"] = 2.0
+    opts["mg_M"] = 4
 
     i = 1
     while i <= length(args)
@@ -88,6 +91,12 @@ function parse_args(args)
                 opts["cg_precond"] = lowercase(args[i + 1])
             elseif key == "max-steps" || key == "max_steps"
                 opts["max_steps"] = parse(Int, args[i + 1])
+            elseif key == "mg-interval" || key == "mg_interval"
+                opts["mg_interval"] = parse(Int, args[i + 1])
+            elseif key == "mg-dt-scale" || key == "mg_dt_scale"
+                opts["mg_dt_scale"] = parse(Float64, args[i + 1])
+            elseif key == "mg-M" || key == "mg_M"
+                opts["mg_M"] = parse(Int, args[i + 1])
             else
                 if key == "nx" || key == "ny" || key == "nz" || key == "M"
                     opts[key] = parse(Int, args[i + 1])
@@ -139,6 +148,9 @@ function main()
     bc_order = Symbol(opts["bc_order"])
     solver = Symbol(lowercase(opts["solver"]))
     cg_precond = Symbol(lowercase(opts["cg_precond"]))
+    mg_interval = Int(opts["mg_interval"])
+    mg_M = Int(opts["mg_M"])
+    mg_dt_scale = Float64(opts["mg_dt_scale"])
     (solver === :taylor || solver === :sor || solver === :ssor || solver === :cg) ||
         error("solver must be taylor/sor/ssor/cg")
     (cg_precond === :ssor || cg_precond === :none) ||
@@ -156,6 +168,9 @@ function main()
     @printf("  solver=%s\n", string(solver))
     if solver === :cg
         @printf("  cg_precond=%s\n", string(cg_precond))
+    end
+    if solver === :taylor && mg_interval > 0
+        @printf("  mg_interval=%d mg_dt_scale=%.3f mg_M=%d\n", mg_interval, mg_dt_scale, mg_M)
     end
     @printf("  output_dir=%s\n", output_dir)
     @printf("  run_dir=%s\n", run_dir)
@@ -179,6 +194,9 @@ function main()
         run_config["dt"] = config.dt
         run_config["Fo"] = fo
         run_config["dt_source"] = dt_source
+        run_config["mg_interval"] = mg_interval
+        run_config["mg_dt_scale"] = mg_dt_scale
+        run_config["mg_M"] = mg_M
     elseif solver === :cg
         run_config["cg_precond"] = string(cg_precond)
     end
@@ -187,7 +205,8 @@ function main()
     end
     warmup_solve(config, prob, bc_order, run_dir, solver, cg_precond)
     sol, runtime = if solver === :taylor
-        solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir)
+        solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir,
+                           mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M)
     elseif solver === :sor
         sor_solve_with_runtime(prob, config; bc_order=bc_order, output_dir=run_dir)
     elseif solver === :ssor
