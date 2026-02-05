@@ -270,6 +270,7 @@ function main()
     end
 
     p = plot(xlabel="step", ylabel="res_l2 (relative)", yscale=:log10,
+             yticks=10.0 .^ (-16:1:0),
              title="Convergence history (res_l2)")
     for (M, _, _, _, _, _, history_path) in results
         steps, res = load_history(history_path)

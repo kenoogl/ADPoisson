@@ -13,6 +13,8 @@ julia --project -e 'using Pkg; Pkg.instantiate()'
 ### **実行**
 ```bash
 julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-10 --alpha 1.0 --output-dir results
+
+julia --project scripts/main.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-10 --alpha 1.0 --output-dir results --solver taylor
 ```
 
 終了時に `Fo`、解析解との **L2誤差（絶対値）**、**最大誤差**、ステップ数、実行時間をまとめて出力します。`Fo > 0.5` の場合は警告を表示します。
@@ -156,3 +158,25 @@ julia --project scripts/plot_run_summary.jl --input-dir results
 出力:
 - `results/compare_errors.png`（`err_l2` と `err_max` の double-Y）
 - `results/compare_runtime_steps.png`（`runtime` と `steps` の double-Y）
+
+### **履歴のまとめ描画**
+`history_*.txt` から `err_l2` と `res_l2` の履歴をまとめて描画します。
+
+必要な分だけ指定（非再帰）:
+```bash
+julia --project scripts/plot_history_compare.jl --input-dirs results/run_20260205_164455,results/run_20260205_170955 --output-dir results
+```
+
+指定ディレクトリ配下をすべて対象（再帰）:
+```bash
+julia --project scripts/plot_history_compare.jl --input-dir results --recursive true
+```
+
+ワイルドカード指定:
+```bash
+julia --project scripts/plot_history_compare.jl --input-glob "results/run_*"
+```
+
+出力:
+- `results/history_err_l2.png`
+- `results/history_res_l2.png`

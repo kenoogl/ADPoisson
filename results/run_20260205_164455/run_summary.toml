@@ -1,0 +1,4 @@
+summary_file = "compare_M_nx64_ny64_nz64_Ms2-4_solvertaylor.txt"
+res_l2_list = [9.990681e-9, 9.991323e-9]
+history_files = ["history_nx64_ny64_nz64_M2_steps10674.txt", "history_nx64_ny64_nz64_M4_steps10674.txt"]
+plot_file = "history_compare_nx64_ny64_nz64_Ms2-4_solvertaylor.png"
