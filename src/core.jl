@@ -329,6 +329,8 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
                     bc_order=:spec, output_dir="results",
                     mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4,
                     mg_level::Int=1, mg_nu1::Int=1, mg_nu2::Int=1,
+                    mg_level_Ms::Union{Nothing,AbstractVector{Int}}=nothing,
+                    mg_level_dt_scales::Union{Nothing,AbstractVector{<:Real}}=nothing,
                     debug_residual::Bool=false, debug_vcycle::Bool=false)
     sol = initialize_solution(config, prob)
     bc = boundary_from_prob(prob)
@@ -390,6 +392,7 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
                 vcycle!(sol.u, f, bc, config, prob;
                         nu1=mg_nu1, nu2=mg_nu2,
                         dt_scale=mg_dt_scale, M=mg_M,
+                        level_dt_scales=mg_level_dt_scales, level_Ms=mg_level_Ms,
                         bc_order=bc_order, debug_io=vcycle_io, debug_denom=denom)
             end
         end
@@ -434,10 +437,13 @@ function solve_with_runtime(config::SolverConfig, prob::ProblemSpec;
                             bc_order=:spec, output_dir="results",
                             mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4,
                             mg_level::Int=1, mg_nu1::Int=1, mg_nu2::Int=1,
+                            mg_level_Ms::Union{Nothing,AbstractVector{Int}}=nothing,
+                            mg_level_dt_scales::Union{Nothing,AbstractVector{<:Real}}=nothing,
                             debug_residual::Bool=false, debug_vcycle::Bool=false)
     return solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
                       mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
                       mg_level=mg_level, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
+                      mg_level_Ms=mg_level_Ms, mg_level_dt_scales=mg_level_dt_scales,
                       debug_residual=debug_residual, debug_vcycle=debug_vcycle)
 end
 
@@ -449,10 +455,13 @@ Main solver loop using Taylor series pseudo-time stepping.
 function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results",
                mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4,
                mg_level::Int=1, mg_nu1::Int=1, mg_nu2::Int=1,
+               mg_level_Ms::Union{Nothing,AbstractVector{Int}}=nothing,
+               mg_level_dt_scales::Union{Nothing,AbstractVector{<:Real}}=nothing,
                debug_residual::Bool=false, debug_vcycle::Bool=false)
     sol, _ = solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
                         mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
                         mg_level=mg_level, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
+                        mg_level_Ms=mg_level_Ms, mg_level_dt_scales=mg_level_dt_scales,
                         debug_residual=debug_residual, debug_vcycle=debug_vcycle)
     return sol
 end

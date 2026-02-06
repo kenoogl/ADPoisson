@@ -62,6 +62,28 @@ function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol,
     rm(warm_dir; recursive=true, force=true)
 end
 
+function parse_int_list(value::AbstractString)
+    parts = split(value, ',')
+    vals = Int[]
+    for part in parts
+        t = strip(part)
+        isempty(t) && continue
+        push!(vals, parse(Int, t))
+    end
+    return isempty(vals) ? nothing : vals
+end
+
+function parse_float_list(value::AbstractString)
+    parts = split(value, ',')
+    vals = Float64[]
+    for part in parts
+        t = strip(part)
+        isempty(t) && continue
+        push!(vals, parse(Float64, t))
+    end
+    return isempty(vals) ? nothing : vals
+end
+
 function mg_levels_and_coarsest(config::SolverConfig, mg_level::Int)
     levels = ADPoisson.mg_max_levels(config; min_n=4)
     if mg_level == 2
@@ -88,6 +110,8 @@ function parse_args(args)
     opts["mg_level"] = 1
     opts["mg_nu1"] = 1
     opts["mg_nu2"] = 1
+    opts["mg_level_Ms"] = nothing
+    opts["mg_level_dt_scales"] = nothing
     opts["debug_residual"] = false
     opts["debug_vcycle"] = false
 
@@ -124,6 +148,10 @@ function parse_args(args)
                 opts["mg_nu1"] = parse(Int, args[i + 1])
             elseif key == "mg-nu2" || key == "mg_nu2"
                 opts["mg_nu2"] = parse(Int, args[i + 1])
+            elseif key == "mg-level-Ms" || key == "mg_level_Ms" || key == "mg-level-ms" || key == "mg_level_ms"
+                opts["mg_level_Ms"] = parse_int_list(args[i + 1])
+            elseif key == "mg-level-dt-scales" || key == "mg_level_dt_scales"
+                opts["mg_level_dt_scales"] = parse_float_list(args[i + 1])
             elseif key == "debug-residual" || key == "debug_residual"
                 v = lowercase(args[i + 1])
                 opts["debug_residual"] = (v == "1" || v == "true" || v == "yes" || v == "on")
@@ -187,6 +215,8 @@ function main()
     mg_level = Int(opts["mg_level"])
     mg_nu1 = Int(opts["mg_nu1"])
     mg_nu2 = Int(opts["mg_nu2"])
+    mg_level_Ms = opts["mg_level_Ms"]
+    mg_level_dt_scales = opts["mg_level_dt_scales"]
     debug_residual = Bool(opts["debug_residual"])
     debug_vcycle = Bool(opts["debug_vcycle"])
     (solver === :taylor || solver === :sor || solver === :ssor || solver === :cg) ||
@@ -239,6 +269,12 @@ function main()
         run_config["mg_level"] = mg_level
         run_config["mg_nu1"] = mg_nu1
         run_config["mg_nu2"] = mg_nu2
+        if mg_level_Ms !== nothing
+            run_config["mg_level_Ms"] = mg_level_Ms
+        end
+        if mg_level_dt_scales !== nothing
+            run_config["mg_level_dt_scales"] = mg_level_dt_scales
+        end
         run_config["debug_residual"] = debug_residual
         run_config["debug_vcycle"] = debug_vcycle
         if mg_interval > 0 && mg_level >= 2
@@ -257,6 +293,7 @@ function main()
         solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir,
                            mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
                            mg_level=mg_level, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
+                           mg_level_Ms=mg_level_Ms, mg_level_dt_scales=mg_level_dt_scales,
                            debug_residual=debug_residual, debug_vcycle=debug_vcycle)
     elseif solver === :sor
         sor_solve_with_runtime(prob, config; bc_order=bc_order, output_dir=run_dir)

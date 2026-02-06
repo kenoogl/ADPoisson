@@ -41,6 +41,8 @@ julia --project scripts/main.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsi
 - `--mg-M`: MG補正ステップに使う Taylor 次数（デフォルト: 4）
 - `--mg-nu1`: MG の前スムージング回数（デフォルト: 1）
 - `--mg-nu2`: MG の後スムージング回数（デフォルト: 1）
+- `--mg-level-Ms`: 階層 Taylor のレベル別 `M`（例: `4,4,2,2`。未指定時は全レベルで `mg_M`）
+- `--mg-level-dt-scales`: 階層 Taylor のレベル別 `dt` スケール（例: `2.0,2.0,4.0,4.0`。未指定時は全レベルで `mg_dt_scale`）
 
 **推奨設定**
 - 拡散数 `Fo = Δt(1/Δx^2 + 1/Δy^2 + 1/Δz^2)` を `0.5` 以下にする
@@ -85,6 +87,10 @@ julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-step
 **V-cycle MG（Taylorのみ）実行例**
 ```bash
 julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-level 3 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
+```
+階層 Taylor を使う場合（レベル別に `M` と `dt` を指定）:
+```bash
+julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-level 3 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --mg-level-Ms 4,4,2,2 --mg-level-dt-scales 2.0,2.0,4.0,4.0 --output-dir results
 ```
 補足:
 - V-cycle は `--mg-interval` ごとに適用されます（`0` で無効）。

@@ -82,6 +82,8 @@ const DEFAULT_CLI_OPTS = Dict{String,Any}(
     "mg_level" => 1,
     "mg_nu1" => 1,
     "mg_nu2" => 1,
+    "mg_level_Ms" => nothing,
+    "mg_level_dt_scales" => nothing,
 )
 
 """

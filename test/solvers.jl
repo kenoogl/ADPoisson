@@ -12,25 +12,26 @@ using ADPoisson
 
     # SOR
     sol_sor = ADPoisson.initialize_solution(config, prob)
-    converged_sor, result_sor = ADPoisson.sor_solve!(sol_sor, f, bc, prob, config; output_dir="test/results")
+    results_dir = joinpath(@__DIR__, "results")
+    converged_sor, result_sor = ADPoisson.sor_solve!(sol_sor, f, bc, prob, config; output_dir=results_dir)
     @test converged_sor
     @test result_sor.iter <= config.max_steps
 
     # SSOR
     sol_ssor = ADPoisson.initialize_solution(config, prob)
-    converged_ssor, result_ssor = ADPoisson.ssor_solve!(sol_ssor, f, bc, prob, config; output_dir="test/results")
+    converged_ssor, result_ssor = ADPoisson.ssor_solve!(sol_ssor, f, bc, prob, config; output_dir=results_dir)
     @test converged_ssor
     @test result_ssor.iter <= config.max_steps
 
     # CG (no precond)
     sol_cg = ADPoisson.initialize_solution(config, prob)
-    converged_cg, result_cg = ADPoisson.cg_solve!(sol_cg, f, bc, prob, config; precond=:none, output_dir="test/results")
+    converged_cg, result_cg = ADPoisson.cg_solve!(sol_cg, f, bc, prob, config; precond=:none, output_dir=results_dir)
     @test converged_cg
     @test result_cg.iter <= config.max_steps
 
     # CG (SSOR precond)
     sol_cg_ssor = ADPoisson.initialize_solution(config, prob)
-    converged_cg_ssor, result_cg_ssor = ADPoisson.cg_solve!(sol_cg_ssor, f, bc, prob, config; precond=:ssor, output_dir="test/results")
+    converged_cg_ssor, result_cg_ssor = ADPoisson.cg_solve!(sol_cg_ssor, f, bc, prob, config; precond=:ssor, output_dir=results_dir)
     @test converged_cg_ssor
     @test result_cg_ssor.iter <= config.max_steps
 end
