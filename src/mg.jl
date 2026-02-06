@@ -233,6 +233,7 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
     if max_level == 0
         max_level = mg_max_levels(config; min_n=min_n)
     end
+    bc_order_level = level == 1 ? bc_order : :spec
     dt_scale_level = mg_level_value(level_dt_scales, level, dt_scale)
     M_level = mg_level_value(level_Ms, level, M)
     M_level = max(Int(M_level), 1)
@@ -249,13 +250,13 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
 
     if !can_coarsen
         direct_solve_poisson!(u, f, config, prob)
-        apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
+        apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order_level)
         return u
     end
 
     r = similar(u)
     buffers = TaylorBuffers3D(similar(u), similar(u), similar(u))
-    taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu1, bc_order=bc_order)
+    taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu1, bc_order=bc_order_level)
 
     compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     if debug_io !== nothing
@@ -288,9 +289,9 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
     @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
         u[i, j, k] += ef[i, j, k]
     end
-    apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
+    apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order_level)
 
-    taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu2, bc_order=bc_order)
+    taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu2, bc_order=bc_order_level)
     return u
 end
 
