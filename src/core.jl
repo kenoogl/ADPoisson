@@ -328,7 +328,8 @@ end
 function solve_core(config::SolverConfig, prob::ProblemSpec;
                     bc_order=:spec, output_dir="results",
                     mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4,
-                    mg_level::Int=1, mg_nu1::Int=1, mg_nu2::Int=1)
+                    mg_level::Int=1, mg_nu1::Int=1, mg_nu2::Int=1,
+                    debug_residual::Bool=false, debug_vcycle::Bool=false)
     sol = initialize_solution(config, prob)
     bc = boundary_from_prob(prob)
 
@@ -351,12 +352,25 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
     denom = max(r0, one(r0))
     history = IOBuffer()
     println(history, "# step err_l2 res_l2")
+    debug_io = debug_residual ? IOBuffer() : nothing
+    r_check = debug_residual ? similar(sol.u) : nothing
+    if debug_residual
+        println(debug_io, "# step res_l2 res_l2_check diff")
+    end
+    vcycle_io = debug_vcycle ? IOBuffer() : nothing
+    if debug_vcycle
+        println(vcycle_io, "# level nx ny res_l2_norm")
+    end
 
     rnorm = r0 / denom
     t_start = time()
     while true
         err_l2 = l2_error_exact_precomputed(sol.u, u_exact, prob, config)
         @printf(history, "%d %.6e %.6e\n", iter, err_l2, rnorm)
+        if debug_residual
+            res_check = compute_residual_norm!(r_check, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz) / denom
+            @printf(debug_io, "%d %.6e %.6e %.6e\n", iter, rnorm, res_check, abs(rnorm - res_check))
+        end
         if rnorm <= config.epsilon || iter >= config.max_steps
             break
         end
@@ -376,7 +390,7 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
                 vcycle!(sol.u, f, bc, config, prob;
                         nu1=mg_nu1, nu2=mg_nu2,
                         dt_scale=mg_dt_scale, M=mg_M,
-                        bc_order=bc_order)
+                        bc_order=bc_order, debug_io=vcycle_io, debug_denom=denom)
             end
         end
         res_l2 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
@@ -394,6 +408,18 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
     open(history_path, "w") do io
         write(io, String(take!(history)))
     end
+    if debug_residual
+        debug_path = joinpath(output_dir, "residual_check_$(tag).txt")
+        open(debug_path, "w") do io
+            write(io, String(take!(debug_io)))
+        end
+    end
+    if debug_vcycle
+        debug_path = joinpath(output_dir, "vcycle_residual_$(tag).txt")
+        open(debug_path, "w") do io
+            write(io, String(take!(vcycle_io)))
+        end
+    end
     @info "summary" Fo=Fo dt=config.dt err_l2=@sprintf("%.3e", err_l2) err_max=@sprintf("%.3e", err_max) steps=iter runtime_s=@sprintf("%.3f", runtime)
     return result, runtime
 end
@@ -407,10 +433,12 @@ Returns (Solution, runtime_s) where runtime is the solve loop only.
 function solve_with_runtime(config::SolverConfig, prob::ProblemSpec;
                             bc_order=:spec, output_dir="results",
                             mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4,
-                            mg_level::Int=1, mg_nu1::Int=1, mg_nu2::Int=1)
+                            mg_level::Int=1, mg_nu1::Int=1, mg_nu2::Int=1,
+                            debug_residual::Bool=false, debug_vcycle::Bool=false)
     return solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
                       mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
-                      mg_level=mg_level, mg_nu1=mg_nu1, mg_nu2=mg_nu2)
+                      mg_level=mg_level, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
+                      debug_residual=debug_residual, debug_vcycle=debug_vcycle)
 end
 
 """
@@ -420,9 +448,11 @@ Main solver loop using Taylor series pseudo-time stepping.
 """
 function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results",
                mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4,
-               mg_level::Int=1, mg_nu1::Int=1, mg_nu2::Int=1)
+               mg_level::Int=1, mg_nu1::Int=1, mg_nu2::Int=1,
+               debug_residual::Bool=false, debug_vcycle::Bool=false)
     sol, _ = solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
                         mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
-                        mg_level=mg_level, mg_nu1=mg_nu1, mg_nu2=mg_nu2)
+                        mg_level=mg_level, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
+                        debug_residual=debug_residual, debug_vcycle=debug_vcycle)
     return sol
 end

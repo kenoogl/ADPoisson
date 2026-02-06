@@ -88,6 +88,8 @@ function parse_args(args)
     opts["mg_level"] = 1
     opts["mg_nu1"] = 1
     opts["mg_nu2"] = 1
+    opts["debug_residual"] = false
+    opts["debug_vcycle"] = false
 
     i = 1
     while i <= length(args)
@@ -122,6 +124,12 @@ function parse_args(args)
                 opts["mg_nu1"] = parse(Int, args[i + 1])
             elseif key == "mg-nu2" || key == "mg_nu2"
                 opts["mg_nu2"] = parse(Int, args[i + 1])
+            elseif key == "debug-residual" || key == "debug_residual"
+                v = lowercase(args[i + 1])
+                opts["debug_residual"] = (v == "1" || v == "true" || v == "yes" || v == "on")
+            elseif key == "debug-vcycle" || key == "debug_vcycle"
+                v = lowercase(args[i + 1])
+                opts["debug_vcycle"] = (v == "1" || v == "true" || v == "yes" || v == "on")
             else
                 if key == "nx" || key == "ny" || key == "nz" || key == "M"
                     opts[key] = parse(Int, args[i + 1])
@@ -179,6 +187,8 @@ function main()
     mg_level = Int(opts["mg_level"])
     mg_nu1 = Int(opts["mg_nu1"])
     mg_nu2 = Int(opts["mg_nu2"])
+    debug_residual = Bool(opts["debug_residual"])
+    debug_vcycle = Bool(opts["debug_vcycle"])
     (solver === :taylor || solver === :sor || solver === :ssor || solver === :cg) ||
         error("solver must be taylor/sor/ssor/cg")
     (cg_precond === :ssor || cg_precond === :none) ||
@@ -229,6 +239,8 @@ function main()
         run_config["mg_level"] = mg_level
         run_config["mg_nu1"] = mg_nu1
         run_config["mg_nu2"] = mg_nu2
+        run_config["debug_residual"] = debug_residual
+        run_config["debug_vcycle"] = debug_vcycle
         if mg_interval > 0 && mg_level >= 2
             levels, coarsest = mg_levels_and_coarsest(config, mg_level)
             run_config["mg_levels_used"] = levels
@@ -244,7 +256,8 @@ function main()
     sol, runtime = if solver === :taylor
         solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir,
                            mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
-                           mg_level=mg_level, mg_nu1=mg_nu1, mg_nu2=mg_nu2)
+                           mg_level=mg_level, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
+                           debug_residual=debug_residual, debug_vcycle=debug_vcycle)
     elseif solver === :sor
         sor_solve_with_runtime(prob, config; bc_order=bc_order, output_dir=run_dir)
     elseif solver === :ssor

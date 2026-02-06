@@ -199,8 +199,19 @@ function main()
     res_path = joinpath(output_dir, "history_res_l2.png")
     png(p_res, res_path)
 
+    p_cmp = plot(xlabel="step", ylabel="err_l2 / res_l2", yscale=:log10,
+                 yticks=10.0 .^ (-16:1:0),
+                 title="History: err_l2 vs res_l2", legend=:right)
+    for (label, steps, err, res) in histories
+        plot!(p_cmp, steps, err; label="$(label) err", linestyle=:solid)
+        plot!(p_cmp, steps, res; label="$(label) res", linestyle=:dash)
+    end
+    cmp_path = joinpath(output_dir, "history_err_vs_res.png")
+    png(p_cmp, cmp_path)
+
     println("wrote $(err_path)")
     println("wrote $(res_path)")
+    println("wrote $(cmp_path)")
 end
 
 main()

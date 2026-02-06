@@ -1,0 +1,30 @@
+mg_nu2 = 1
+dt_source = "Fo"
+output_dir = "results"
+bc_order = "high"
+dt = 4.0690104166666664e-5
+nx = 64
+mg_levels_used = 5
+M = 2
+solver = "taylor"
+mg_level = 3
+mg_dt_scale = 2.0
+nz = 64
+script = "scripts/main.jl"
+alpha = 1.0
+ny = 64
+mg_nu1 = 1
+Fo = 0.5
+mg_interval = 5
+max_steps = 10000
+mg_M = 2
+run_dir = "results/run_20260206_104514"
+epsilon = 1.0e-8
+timestamp = "2026-02-06T10:45:14zzzz"
+debug_residual = true
+warmup = true
+
+[mg_coarsest_grid]
+nz = 4
+nx = 4
+ny = 4

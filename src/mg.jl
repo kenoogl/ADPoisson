@@ -227,7 +227,9 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
                  level::Int=1, max_level::Int=0, min_n::Int=4,
                  nu1::Int=1, nu2::Int=1, dt_scale::Real=2.0, M::Int=2,
                  level_dt_scales=nothing, level_Ms=nothing,
-                 bc_order::Symbol=:spec) where {T<:Real}
+                 bc_order::Symbol=:spec,
+                 debug_io::Union{Nothing,IO}=nothing,
+                 debug_denom::Union{Nothing,Real}=nothing) where {T<:Real}
     if max_level == 0
         max_level = mg_max_levels(config; min_n=min_n)
     end
@@ -256,6 +258,13 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
     taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu1, bc_order=bc_order)
 
     compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+    if debug_io !== nothing
+        res = l2_norm_interior(r, config)
+        if debug_denom !== nothing
+            res /= debug_denom
+        end
+        @printf(debug_io, "%d %d %d %.6e\n", level, config.nx, config.ny, res)
+    end
     @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
         r[i, j, k] = -r[i, j, k]
     end
@@ -272,7 +281,7 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
             level=level + 1, max_level=max_level, min_n=min_n,
             nu1=nu1, nu2=nu2, dt_scale=dt_scale, M=M,
             level_dt_scales=level_dt_scales, level_Ms=level_Ms,
-            bc_order=bc_order)
+            bc_order=bc_order, debug_io=debug_io, debug_denom=debug_denom)
 
     ef = zeros(T, config.nx + 2, config.ny + 2, config.nz + 2)
     prolong_trilinear!(ef, ec, config, cfg_c_base)
