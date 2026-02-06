@@ -151,13 +151,22 @@
   - _Design: マルチグリッド的加速_
 - [ ] 18. レベル3（V-cycle MG）の実装 (`src/mg.jl`)
   - 再帰 V-cycle（最粗格子で直接解法）
+  - 誤差方程式 $Le=r$ を解く場合は coarse でゼロ Dirichlet 境界を適用
   - レベル依存で $\Delta t$ / $M$ を変更可能
   - depends: [17]
   - _Requirements: 加速（マルチグリッド的アプローチ）_
   - _Design: マルチグリッド的加速_
-- [x] 19. Phase 5 テスト (`test/mg.jl`)
+- [ ] 19. 階層 Taylor パラメータ指定の追加
+  - CLI に `--mg-level-Ms`, `--mg-level-dt-scales` を追加
+  - 配列長がレベル数未満の場合は最後の値を繰り返す
+  - `run_config.toml` に設定値を保存
+  - テスト: CLI で指定した配列が `run_config.toml` に保存されることを確認
+  - depends: [18]
+  - _Requirements: 階層 Taylor（Level-dependent Taylor）_
+  - _Design: 階層 Taylor（Level-dependent Taylor）_
+- [ ] 20. Phase 5 テスト (`test/mg.jl`)
   - レベル1: 補正後に残差が減少することを確認
   - レベル2: 2-level MG で収束を確認
-  - depends: [16, 17, 18]
+  - depends: [16, 17, 18, 19]
   - _Requirements: 加速（マルチグリッド的アプローチ）_
   - _Design: テスト戦略_

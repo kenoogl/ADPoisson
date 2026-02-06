@@ -66,7 +66,24 @@
     - 粗格子境界値は fine からの転送ではなく、境界条件関数から直接評価する
   - **レベル3（V-cycle MG）**:
     - 多段の V-cycle（必要なら W-cycle）を構成し、最粗格子では直接解法または厳密解を用いる
+    - 直接解法は密行列を組み、`A \\ b`（LU ベース）で解く
     - レベル依存で $\Delta t$ や Taylor 次数 $M$ を変えることを許容する
+  - **階層 Taylor（Level-dependent Taylor）**:
+    - レベル番号は **1=最細（fine）**、以降レベルが増えるほど粗格子とする
+    - `mg_level_Ms` / `mg_level_dt_scales` は CLI から指定可能とする
+      - `--mg-level-Ms 4,4,2,2`、`--mg-level-dt-scales 2.0,2.0,4.0,4.0`
+      - `run_config.toml` に設定値を記録する
+    - 配列長がレベル数未満の場合は **最後の値を繰り返して使用**する
+    - `mg_level_dt_scales` 未指定時は **`mg_dt_scale` を全レベルに適用**する
+    - レベル $\ell$ の Taylor 更新は、格子幅に対応した $\Delta t_\ell,\ M_\ell$ を用いる
+    - $\Delta t_\ell = \Delta t \cdot s_\ell$（$s_\ell$ は `mg_level_dt_scales` で指定）
+    - $M_\ell$ は `mg_level_Ms` で指定（未指定は全レベルで `mg_M`）
+    - 漸化式は各レベルで同一:
+      $$(u^{(\ell)})_{m+1}=\frac{1}{m+1}\Bigl((L_\ell u^{(\ell)}_m)-(f_\ell)_m\Bigr)$$
+      $f$ が擬似時間一定なら $(f_\ell)_0=f_\ell,\ (f_\ell)_m=0\ (m\ge1)$
+    - **誤差方程式** $L e = r$ を解く場合は、粗格子で **境界条件はゼロ（Dirichlet）** とする
+    - `mg_level_Ms` / `mg_level_dt_scales` は `run_config.toml` に保存する
+    - `mg_M` のデフォルトは **4**、`mg_dt_scale` のデフォルトは **2.0**
     - 最粗格子は内点数がいずれか 4 未満になった時点で停止する
   - CG が適用可能であること（係数行列の対称性・正定性）を確認する
   - 出力は実行ごとの `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` を記録する
