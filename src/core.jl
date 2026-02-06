@@ -179,7 +179,7 @@ function taylor_series_update_reuse!(u_next::Array{T,3}, buffers::TaylorBuffers3
         apply_bc!(bufB, bc, m + 1, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
         dt_pow *= config.dt
         accumulate_taylor!(acc, bufB, dt_pow, config)
-        bufA, bufB = bufB, bufA
+        bufA, bufB = bufB, bufA # not copy, pointer exchange
     end
 
     u_next .= acc
@@ -372,6 +372,11 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
                                          nu1=mg_nu1, nu2=mg_nu2,
                                          dt_scale=mg_dt_scale, M=mg_M,
                                          bc_order=bc_order)
+            elseif mg_level == 3
+                vcycle!(sol.u, f, bc, config, prob;
+                        nu1=mg_nu1, nu2=mg_nu2,
+                        dt_scale=mg_dt_scale, M=mg_M,
+                        bc_order=bc_order)
             end
         end
         res_l2 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)

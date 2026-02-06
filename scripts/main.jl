@@ -62,6 +62,22 @@ function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol,
     rm(warm_dir; recursive=true, force=true)
 end
 
+function mg_levels_and_coarsest(config::SolverConfig, mg_level::Int)
+    levels = ADPoisson.mg_max_levels(config; min_n=4)
+    if mg_level == 2
+        levels = min(levels, 2)
+    end
+    cx = config.nx
+    cy = config.ny
+    cz = config.nz
+    for _ in 2:levels
+        cx ÷= 2
+        cy ÷= 2
+        cz ÷= 2
+    end
+    return levels, Dict("nx" => cx, "ny" => cy, "nz" => cz)
+end
+
 function parse_args(args)
     opts = default_cli_options()
     opts["output_dir"] = "results"
@@ -213,6 +229,11 @@ function main()
         run_config["mg_level"] = mg_level
         run_config["mg_nu1"] = mg_nu1
         run_config["mg_nu2"] = mg_nu2
+        if mg_interval > 0 && mg_level >= 2
+            levels, coarsest = mg_levels_and_coarsest(config, mg_level)
+            run_config["mg_levels_used"] = levels
+            run_config["mg_coarsest_grid"] = coarsest
+        end
     elseif solver === :cg
         run_config["cg_precond"] = string(cg_precond)
     end
@@ -255,6 +276,11 @@ function main()
         "error_plot" => "error_$(tag).png",
         "exact_plot" => "exact_nx$(config.nx)_ny$(config.ny)_nz$(config.nz).png",
     )
+    if solver === :taylor && mg_interval > 0 && mg_level >= 2
+        levels, coarsest = mg_levels_and_coarsest(config, mg_level)
+        run_summary["mg_levels_used"] = levels
+        run_summary["mg_coarsest_grid"] = coarsest
+    end
     open(joinpath(run_dir, "run_summary.toml"), "w") do io
         TOML.print(io, run_summary)
     end

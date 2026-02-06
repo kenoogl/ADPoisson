@@ -26,4 +26,12 @@ using ADPoisson
                                        nu1=1, nu2=1, dt_scale=2.0, M=2, bc_order=:spec)
     r2_1 = ADPoisson.compute_residual_norm!(r, sol2.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     @test r2_1 <= r2_0
+
+    sol3 = ADPoisson.initialize_solution(config, prob)
+    ADPoisson.apply_bc!(sol3.u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
+    r3_0 = ADPoisson.compute_residual_norm!(r, sol3.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+    ADPoisson.vcycle!(sol3.u, f, bc, config, prob;
+                      nu1=1, nu2=1, dt_scale=2.0, M=2, bc_order=:spec)
+    r3_1 = ADPoisson.compute_residual_norm!(r, sol3.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+    @test r3_1 <= r3_0
 end

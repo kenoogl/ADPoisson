@@ -127,6 +127,164 @@ function prolong_trilinear!(ef::Array{T,3}, ec::Array{T,3},
     return ef
 end
 
+function mg_max_levels(config::SolverConfig; min_n::Int=4)
+    levels = 1
+    nx = config.nx
+    ny = config.ny
+    nz = config.nz
+    while (nx % 2 == 0) && (ny % 2 == 0) && (nz % 2 == 0)
+        nx2 = nx ÷ 2
+        ny2 = ny ÷ 2
+        nz2 = nz ÷ 2
+        if nx2 < min_n || ny2 < min_n || nz2 < min_n
+            break
+        end
+        levels += 1
+        nx = nx2
+        ny = ny2
+        nz = nz2
+    end
+    return levels
+end
+
+@inline function mg_level_value(values::Nothing, level::Int, default)
+    return default
+end
+
+@inline function mg_level_value(values::AbstractVector, level::Int, default)
+    if level <= length(values)
+        return values[level]
+    end
+    return values[end]
+end
+
+function mg_dt_clipped(config::SolverConfig, prob::ProblemSpec, dt_scale::T) where {T<:Real}
+    dx, dy, dz = grid_spacing(config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+    denom = (one(T) / (dx * dx) + one(T) / (dy * dy) + one(T) / (dz * dz))
+    dt_corr = config.dt * dt_scale
+    if dt_corr * denom > 0.5
+        dt_corr = convert(T, 0.5) / denom
+    end
+    return dt_corr
+end
+
+function direct_solve_poisson!(u::Array{T,3}, f::Array{T,3},
+                               config::SolverConfig, prob::ProblemSpec) where {T<:Real}
+    nx = config.nx
+    ny = config.ny
+    nz = config.nz
+    n = nx * ny * nz
+    A = zeros(T, n, n)
+    b = zeros(T, n)
+    dx, dy, dz = grid_spacing(config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+    inv_dx2 = one(T) / (dx * dx)
+    inv_dy2 = one(T) / (dy * dy)
+    inv_dz2 = one(T) / (dz * dz)
+    diag = -2 * (inv_dx2 + inv_dy2 + inv_dz2)
+    stride_xy = nx * ny
+    @inbounds for k in 1:nz, j in 1:ny, i in 1:nx
+        idx = i + (j - 1) * nx + (k - 1) * stride_xy
+        A[idx, idx] = diag
+        if i > 1
+            A[idx, idx - 1] = inv_dx2
+        end
+        if i < nx
+            A[idx, idx + 1] = inv_dx2
+        end
+        if j > 1
+            A[idx, idx - nx] = inv_dy2
+        end
+        if j < ny
+            A[idx, idx + nx] = inv_dy2
+        end
+        if k > 1
+            A[idx, idx - stride_xy] = inv_dz2
+        end
+        if k < nz
+            A[idx, idx + stride_xy] = inv_dz2
+        end
+        b[idx] = f[i + 1, j + 1, k + 1]
+    end
+    x = A \ b
+    @inbounds for k in 1:nz, j in 1:ny, i in 1:nx
+        idx = i + (j - 1) * nx + (k - 1) * stride_xy
+        u[i + 1, j + 1, k + 1] = x[idx]
+    end
+    return u
+end
+
+"""
+    vcycle!(u, f, bc, config, prob;
+            level=1, max_level=0, min_n=4,
+            nu1=1, nu2=1, dt_scale=2.0, M=2,
+            level_dt_scales=nothing, level_Ms=nothing,
+            bc_order=:spec)
+
+Apply a recursive V-cycle to solve Lu = f using Taylor smoothing.
+"""
+function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
+                 config::SolverConfig, prob::ProblemSpec;
+                 level::Int=1, max_level::Int=0, min_n::Int=4,
+                 nu1::Int=1, nu2::Int=1, dt_scale::Real=2.0, M::Int=2,
+                 level_dt_scales=nothing, level_Ms=nothing,
+                 bc_order::Symbol=:spec) where {T<:Real}
+    if max_level == 0
+        max_level = mg_max_levels(config; min_n=min_n)
+    end
+    dt_scale_level = mg_level_value(level_dt_scales, level, dt_scale)
+    M_level = mg_level_value(level_Ms, level, M)
+    M_level = max(Int(M_level), 1)
+    dt_corr = mg_dt_clipped(config, prob, convert(T, dt_scale_level))
+    cfg_level = SolverConfig(config.nx, config.ny, config.nz, M_level,
+                             dt_corr, config.max_steps, config.epsilon)
+
+    nx_c = config.nx ÷ 2
+    ny_c = config.ny ÷ 2
+    nz_c = config.nz ÷ 2
+    can_coarsen = (level < max_level) &&
+                  (config.nx % 2 == 0) && (config.ny % 2 == 0) && (config.nz % 2 == 0) &&
+                  (nx_c >= min_n) && (ny_c >= min_n) && (nz_c >= min_n)
+
+    if !can_coarsen
+        direct_solve_poisson!(u, f, config, prob)
+        apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
+        return u
+    end
+
+    r = similar(u)
+    buffers = TaylorBuffers3D(similar(u), similar(u), similar(u))
+    taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu1, bc_order=bc_order)
+
+    compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        r[i, j, k] = -r[i, j, k]
+    end
+    zero_ghost!(r, config)
+
+    rc = zeros(T, nx_c + 2, ny_c + 2, nz_c + 2)
+    cfg_c_base = SolverConfig(nx_c, ny_c, nz_c, config.M, config.dt,
+                              config.max_steps, config.epsilon)
+    restrict_full_weighting!(rc, r, config, cfg_c_base)
+
+    ec = zeros(T, nx_c + 2, ny_c + 2, nz_c + 2)
+    bc0 = zero_boundary_conditions(T)
+    vcycle!(ec, rc, bc0, cfg_c_base, prob;
+            level=level + 1, max_level=max_level, min_n=min_n,
+            nu1=nu1, nu2=nu2, dt_scale=dt_scale, M=M,
+            level_dt_scales=level_dt_scales, level_Ms=level_Ms,
+            bc_order=bc_order)
+
+    ef = zeros(T, config.nx + 2, config.ny + 2, config.nz + 2)
+    prolong_trilinear!(ef, ec, config, cfg_c_base)
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        u[i, j, k] += ef[i, j, k]
+    end
+    apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
+
+    taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu2, bc_order=bc_order)
+    return u
+end
+
 """
     two_level_mg_correction!(u, f, bc, config, prob;
                              nu1=1, nu2=1, dt_scale=2.0, M=2, bc_order=:spec)

@@ -1,0 +1,8 @@
+err_l2 = 6.132015860887978e-5
+steps = 3565
+runtime_s = 15.719106912612915
+err_max = 0.00014025075149826094
+history_file = "history_nx64_ny64_nz64_M2_steps3565.txt"
+res_l2 = 9.988852e-9
+exact_plot = "exact_nx64_ny64_nz64.png"
+error_plot = "error_nx64_ny64_nz64_M2_steps3565.png"
