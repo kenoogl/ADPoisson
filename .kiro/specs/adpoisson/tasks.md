@@ -197,6 +197,7 @@
   - _Design: テスト戦略_
 - [x] 24. MGワークスペース導入（バッファ再利用） (`src/mg.jl`)
   - V-cycle 内の `zeros/similar` を排除し、レベルごとに `r/rhs/e/tmp/taylor` を事前確保
+  - 再利用時は **配列全域（境界/ゴースト領域を含む）を `fill!`** で初期化する
   - `MGLevelWorkspace` / `MGWorkspace` を定義し `vcycle!` に渡す
   - coarse RHS は `levels[level+1].rhs` を再利用し、補間結果は `levels[level].e` に保持
   - `correction_taylor_solve!` はワークバッファ引数を受け取り再確保しない
