@@ -79,9 +79,10 @@ const DEFAULT_CLI_OPTS = Dict{String,Any}(
     "mg_interval" => 0,
     "mg_dt_scale" => 2.0,
     "mg_M" => 4,
-    "mg_level" => 1,
+    "mg_vcycle" => false,
     "mg_nu1" => 1,
     "mg_nu2" => 1,
+    "mg_vcycle_mode" => "uniform",
     "mg_level_Ms" => nothing,
     "mg_level_dt_scales" => nothing,
 )

@@ -84,11 +84,18 @@ function parse_float_list(value::AbstractString)
     return isempty(vals) ? nothing : vals
 end
 
-function mg_levels_and_coarsest(config::SolverConfig, mg_level::Int)
-    levels = ADPoisson.mg_max_levels(config; min_n=4)
-    if mg_level == 2
-        levels = min(levels, 2)
+function parse_bool(value::AbstractString)
+    v = lowercase(strip(value))
+    if v == "1" || v == "true" || v == "yes" || v == "on"
+        return true
+    elseif v == "0" || v == "false" || v == "no" || v == "off"
+        return false
     end
+    error("invalid boolean: $(value)")
+end
+
+function mg_levels_and_coarsest(config::SolverConfig)
+    levels = ADPoisson.mg_max_levels(config; min_n=4)
     cx = config.nx
     cy = config.ny
     cz = config.nz
@@ -107,9 +114,10 @@ function parse_args(args)
     opts["mg_interval"] = 0
     opts["mg_dt_scale"] = 2.0
     opts["mg_M"] = 4
-    opts["mg_level"] = 1
+    opts["mg_vcycle"] = false
     opts["mg_nu1"] = 1
     opts["mg_nu2"] = 1
+    opts["mg_vcycle_mode"] = "uniform"
     opts["mg_level_Ms"] = nothing
     opts["mg_level_dt_scales"] = nothing
     opts["debug_residual"] = false
@@ -142,12 +150,14 @@ function parse_args(args)
                 opts["mg_dt_scale"] = parse(Float64, args[i + 1])
             elseif key == "mg-M" || key == "mg_M"
                 opts["mg_M"] = parse(Int, args[i + 1])
-            elseif key == "mg-level" || key == "mg_level"
-                opts["mg_level"] = parse(Int, args[i + 1])
+            elseif key == "mg-vcycle" || key == "mg_vcycle"
+                opts["mg_vcycle"] = parse_bool(args[i + 1])
             elseif key == "mg-nu1" || key == "mg_nu1"
                 opts["mg_nu1"] = parse(Int, args[i + 1])
             elseif key == "mg-nu2" || key == "mg_nu2"
                 opts["mg_nu2"] = parse(Int, args[i + 1])
+            elseif key == "mg-vcycle-mode" || key == "mg_vcycle_mode"
+                opts["mg_vcycle_mode"] = lowercase(args[i + 1])
             elseif key == "mg-level-Ms" || key == "mg_level_Ms" || key == "mg-level-ms" || key == "mg_level_ms"
                 opts["mg_level_Ms"] = parse_int_list(args[i + 1])
             elseif key == "mg-level-dt-scales" || key == "mg_level_dt_scales"
@@ -212,17 +222,37 @@ function main()
     mg_interval = Int(opts["mg_interval"])
     mg_M = Int(opts["mg_M"])
     mg_dt_scale = Float64(opts["mg_dt_scale"])
-    mg_level = Int(opts["mg_level"])
+    mg_vcycle = Bool(opts["mg_vcycle"])
     mg_nu1 = Int(opts["mg_nu1"])
     mg_nu2 = Int(opts["mg_nu2"])
+    mg_vcycle_mode = String(opts["mg_vcycle_mode"])
     mg_level_Ms = opts["mg_level_Ms"]
     mg_level_dt_scales = opts["mg_level_dt_scales"]
+    (mg_vcycle_mode == "uniform" || mg_vcycle_mode == "hierarchical") ||
+        error("mg-vcycle-mode must be uniform/hierarchical")
+    use_hierarchical_taylor = (mg_vcycle_mode == "hierarchical")
     debug_residual = Bool(opts["debug_residual"])
     debug_vcycle = Bool(opts["debug_vcycle"])
     (solver === :taylor || solver === :sor || solver === :ssor || solver === :cg) ||
         error("solver must be taylor/sor/ssor/cg")
     (cg_precond === :ssor || cg_precond === :none) ||
         error("cg-precond must be ssor/none")
+    if solver === :taylor && !mg_vcycle && use_hierarchical_taylor
+        @warn "--mg-vcycle-mode is only used when mg-vcycle=true; disabling hierarchical taylor"
+        use_hierarchical_taylor = false
+    end
+    if solver === :taylor && !mg_vcycle &&
+       ((mg_level_Ms !== nothing) || (mg_level_dt_scales !== nothing))
+        @warn "mg-level-Ms/mg-level-dt-scales are ignored unless --mg-vcycle true"
+        mg_level_Ms = nothing
+        mg_level_dt_scales = nothing
+    end
+    if solver === :taylor && mg_vcycle && !use_hierarchical_taylor &&
+       ((mg_level_Ms !== nothing) || (mg_level_dt_scales !== nothing))
+        @warn "mg-level-Ms/mg-level-dt-scales are ignored unless --mg-vcycle-mode hierarchical"
+        mg_level_Ms = nothing
+        mg_level_dt_scales = nothing
+    end
     output_dir = string(opts["output_dir"])
     run_dir = make_run_dir(output_dir)
     if solver !== :taylor && bc_order !== :spec
@@ -238,8 +268,8 @@ function main()
         @printf("  cg_precond=%s\n", string(cg_precond))
     end
     if solver === :taylor && mg_interval > 0
-        @printf("  mg_level=%d mg_interval=%d mg_dt_scale=%.3f mg_M=%d mg_nu1=%d mg_nu2=%d\n",
-                mg_level, mg_interval, mg_dt_scale, mg_M, mg_nu1, mg_nu2)
+        @printf("  mg_vcycle=%s mg_vcycle_mode=%s mg_interval=%d mg_dt_scale=%.3f mg_M=%d mg_nu1=%d mg_nu2=%d\n",
+                string(mg_vcycle), mg_vcycle_mode, mg_interval, mg_dt_scale, mg_M, mg_nu1, mg_nu2)
     end
     @printf("  output_dir=%s\n", output_dir)
     @printf("  run_dir=%s\n", run_dir)
@@ -266,9 +296,11 @@ function main()
         run_config["mg_interval"] = mg_interval
         run_config["mg_dt_scale"] = mg_dt_scale
         run_config["mg_M"] = mg_M
-        run_config["mg_level"] = mg_level
+        run_config["mg_vcycle"] = mg_vcycle
+        run_config["mg_vcycle_mode"] = mg_vcycle_mode
         run_config["mg_nu1"] = mg_nu1
         run_config["mg_nu2"] = mg_nu2
+        run_config["mg_hierarchical_taylor"] = use_hierarchical_taylor
         if mg_level_Ms !== nothing
             run_config["mg_level_Ms"] = mg_level_Ms
         end
@@ -277,8 +309,8 @@ function main()
         end
         run_config["debug_residual"] = debug_residual
         run_config["debug_vcycle"] = debug_vcycle
-        if mg_interval > 0 && mg_level >= 2
-            levels, coarsest = mg_levels_and_coarsest(config, mg_level)
+        if mg_vcycle && mg_interval > 0
+            levels, coarsest = mg_levels_and_coarsest(config)
             run_config["mg_levels_used"] = levels
             run_config["mg_coarsest_grid"] = coarsest
         end
@@ -292,8 +324,9 @@ function main()
     sol, runtime = if solver === :taylor
         solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir,
                            mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
-                           mg_level=mg_level, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
-                           mg_level_Ms=mg_level_Ms, mg_level_dt_scales=mg_level_dt_scales,
+                           mg_vcycle=mg_vcycle, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
+                           mg_level_Ms=(use_hierarchical_taylor ? mg_level_Ms : nothing),
+                           mg_level_dt_scales=(use_hierarchical_taylor ? mg_level_dt_scales : nothing),
                            debug_residual=debug_residual, debug_vcycle=debug_vcycle)
     elseif solver === :sor
         sor_solve_with_runtime(prob, config; bc_order=bc_order, output_dir=run_dir)
@@ -326,8 +359,8 @@ function main()
         "error_plot" => "error_$(tag).png",
         "exact_plot" => "exact_nx$(config.nx)_ny$(config.ny)_nz$(config.nz).png",
     )
-    if solver === :taylor && mg_interval > 0 && mg_level >= 2
-        levels, coarsest = mg_levels_and_coarsest(config, mg_level)
+    if solver === :taylor && mg_vcycle && mg_interval > 0
+        levels, coarsest = mg_levels_and_coarsest(config)
         run_summary["mg_levels_used"] = levels
         run_summary["mg_coarsest_grid"] = coarsest
     end

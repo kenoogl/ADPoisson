@@ -36,13 +36,20 @@ julia --project scripts/main.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsi
 - `--solver`: 実行するソルバー（`taylor` / `sor` / `ssor` / `cg`、デフォルト: `taylor`）
 - `--cg-precond`: CG の前処理（`ssor` / `none`、デフォルト: `none`）
 - `--mg-interval`: MG補正の適用間隔（0 で無効、デフォルト: 0）
-- `--mg-level`: MGレベル（`1`: 疑似MG, `2`: 2-level MG, `3`: V-cycle MG、デフォルト: 1）
+- `--mg-vcycle`: V-cycle MG を有効化するか（`true` / `false`、デフォルト: `false`）
 - `--mg-dt-scale`: MG補正ステップ用 `dt` 係数（デフォルト: 2.0）
 - `--mg-M`: MG補正ステップに使う Taylor 次数（デフォルト: 4）
 - `--mg-nu1`: MG の前スムージング回数（デフォルト: 1）
 - `--mg-nu2`: MG の後スムージング回数（デフォルト: 1）
+- `--mg-vcycle-mode`: V-cycle の更新モード（`uniform` / `hierarchical`、デフォルト: `uniform`）
+  - `uniform`: 全レベルで `mg_M`, `mg_dt_scale` を共通使用
+  - `hierarchical`: レベル別に `mg_level_Ms`, `mg_level_dt_scales` を使用
 - `--mg-level-Ms`: 階層 Taylor のレベル別 `M`（例: `4,4,2,2`。未指定時は全レベルで `mg_M`）
 - `--mg-level-dt-scales`: 階層 Taylor のレベル別 `dt` スケール（例: `2.0,2.0,4.0,4.0`。未指定時は全レベルで `mg_dt_scale`）
+  - `mg-level-Ms` と `mg-level-dt-scales` は同じレベル番号（1=最細）で対応づけて使用する
+  - 配列長がレベル数より短い場合は最後の値を繰り返して適用する
+  - 2つは独立指定だが実効的には連成する（同一レベルで `M` を下げるほど `dt` を大きくしすぎない方が安定しやすい）
+  - `dt` は各レベルで Fo 条件によりクリップされるため、`dt-scale` を上げても効果が頭打ちになる場合がある
 
 **推奨設定**
 - 拡散数 `Fo = Δt(1/Δx^2 + 1/Δy^2 + 1/Δz^2)` を `0.5` 以下にする
@@ -58,7 +65,7 @@ julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); max_steps=Int(ceil(0.5
 
 出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（デフォルト: `results/`）。
 実行条件と結果の確認用に `run_config.toml` と `run_summary.toml` を出力します。
-`--mg-level 2/3` の場合、`mg_levels_used`（使用レベル数）と `mg_coarsest_grid`（最粗格子の `nx,ny,nz`）を記録します。
+`--mg-vcycle true` の場合、`mg_levels_used`（使用レベル数）と `mg_coarsest_grid`（最粗格子の `nx,ny,nz`）を記録します。
 - `exact_nx{nx}_ny{ny}_nz{nz}.png`（解析解のため格子情報のみ）
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
 - `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
@@ -74,23 +81,13 @@ julia --project scripts/main.jl --solver cg --cg-precond ssor --nx 32 --ny 32 --
 julia --project scripts/main.jl --solver sor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
 ```
 
-**疑似MG（Taylorのみ）実行例**
-```bash
-julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-level 1 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --output-dir results
-```
-
-**2-level MG（Taylorのみ）実行例**
-```bash
-julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-level 2 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
-```
-
 **V-cycle MG（Taylorのみ）実行例**
 ```bash
-julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-level 3 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
+julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-vcycle true --mg-vcycle-mode uniform --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
 ```
 階層 Taylor を使う場合（レベル別に `M` と `dt` を指定）:
 ```bash
-julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-level 3 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --mg-level-Ms 4,4,2,2 --mg-level-dt-scales 2.0,2.0,4.0,4.0 --output-dir results
+julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-vcycle true --mg-vcycle-mode hierarchical --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --mg-level-Ms 4,4,2,2 --mg-level-dt-scales 2.0,2.0,4.0,4.0 --output-dir results
 ```
 補足:
 - V-cycle は `--mg-interval` ごとに適用されます（`0` で無効）。
