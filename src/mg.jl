@@ -1,34 +1,5 @@
 # mg.jl
 
-"""
-    pseudo_mg_correction!(u, f, bc, config, prob; dt_scale=2.0, M=2, bc_order=:spec)
-
-Apply a pseudo multigrid-style correction by taking a stronger Taylor step
-with a larger dt (clipped by Fo) and low order M.
-"""
-function pseudo_mg_correction!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
-                               config::SolverConfig, prob::ProblemSpec;
-                               dt_scale::T=convert(T, 2.0), M::Int=2,
-                               bc_order::Symbol=:spec) where {T<:Real}
-    r = similar(u)
-    buffers = TaylorBuffers3D(similar(u), similar(u), similar(u))
-
-    apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
-    compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-
-    dx, dy, dz = grid_spacing(config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    denom = (one(T) / (dx * dx) + one(T) / (dy * dy) + one(T) / (dz * dz))
-    dt_corr = config.dt * dt_scale
-    if dt_corr * denom > 0.5
-        dt_corr = convert(T, 0.5) / denom
-    end
-
-    corr_config = SolverConfig(config.nx, config.ny, config.nz, M, dt_corr,
-                               config.max_steps, config.epsilon)
-    taylor_series_update_reuse!(u, buffers, r, f, bc, corr_config, prob; bc_order=bc_order)
-    return u
-end
-
 function taylor_smoother!(u::Array{T,3}, buffers::TaylorBuffers3D{T}, r::Array{T,3},
                           f::Array{T,3}, bc::BoundaryConditions,
                           config::SolverConfig, prob::ProblemSpec;
@@ -155,8 +126,9 @@ struct MGLevelWorkspace{T}
     tmp::Array{T,3}
 end
 
-mutable struct MGWorkspace{T}
+mutable struct MGWorkspace{T,BC}
     levels::Vector{MGLevelWorkspace{T}}
+    bc0::BC
     coarse_A::Union{Nothing,Array{T,2}}
     coarse_fact::Union{Nothing,Factorization{T}}
     coarse_b::Union{Nothing,Vector{T}}
@@ -189,7 +161,8 @@ function build_mg_workspace(u::Array{T,3}, config::SolverConfig; min_n::Int=4) w
             nz = nz ÷ 2
         end
     end
-    return MGWorkspace{T}(work_levels, nothing, nothing, nothing, nothing, (0, 0, 0))
+    bc0 = zero_boundary_conditions(T)
+    return MGWorkspace{T,typeof(bc0)}(work_levels, bc0, nothing, nothing, nothing, nothing, (0, 0, 0))
 end
 
 @inline function mg_level_value(values::Nothing, level::Int, default)
@@ -211,6 +184,13 @@ function mg_dt_clipped(config::SolverConfig, prob::ProblemSpec, dt_scale::T) whe
         dt_corr = convert(T, 0.5) / denom
     end
     return dt_corr
+end
+
+function zero_interior!(a::Array{T,3}, config::SolverConfig) where {T<:Real}
+    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        a[i, j, k] = zero(T)
+    end
+    return a
 end
 
 """
@@ -240,7 +220,7 @@ end
 
 function direct_solve_poisson!(u::Array{T,3}, f::Array{T,3},
                                config::SolverConfig, prob::ProblemSpec,
-                               ws::MGWorkspace{T}) where {T<:Real}
+                               ws::MGWorkspace{T,BC}) where {T<:Real,BC}
     nx = config.nx
     ny = config.ny
     nz = config.nz
@@ -278,7 +258,7 @@ function direct_solve_poisson!(u::Array{T,3}, f::Array{T,3},
             end
         end
         ws.coarse_A = A
-        ws.coarse_fact = lu(A)
+        ws.coarse_fact = lu!(A)
         ws.coarse_b = Vector{T}(undef, n)
         ws.coarse_x = Vector{T}(undef, n)
         ws.coarse_dims = dims
@@ -314,7 +294,7 @@ end
 Apply a recursive V-cycle to solve Lu = f using Taylor smoothing.
 """
 function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
-                 config::SolverConfig, prob::ProblemSpec, ws::MGWorkspace{T};
+                 config::SolverConfig, prob::ProblemSpec, ws::MGWorkspace{T,BC};
                  level::Int=1, max_level::Int=0, min_n::Int=4,
                  nu1::Int=1, nu2::Int=1, dt_scale::Real=2.0, M::Int=2,
                  level_dt_scales=nothing, level_Ms=nothing,
@@ -325,7 +305,7 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
                  is_correction::Bool=false,
                  bc_order::Symbol=:spec,
                  debug_io::Union{Nothing,IO}=nothing,
-                 debug_denom::Union{Nothing,Real}=nothing) where {T<:Real}
+                 debug_denom::Union{Nothing,Real}=nothing) where {T<:Real,BC}
     if max_level == 0
         max_level = length(ws.levels)
     end
@@ -372,13 +352,14 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
     buffers = ws_level.taylor
     taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu1_level, bc_order=bc_order_level)
 
-    compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     if debug_io !== nothing
-        res = l2_norm_interior(r, config)
+        res = compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
         if debug_denom !== nothing
             res /= debug_denom
         end
         @printf(debug_io, "%d %d %d %.6e\n", level, config.nx, config.ny, res)
+    else
+        compute_residual!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     end
     @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
         r[i, j, k] = -r[i, j, k]
@@ -387,14 +368,13 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
 
     ws_coarse = ws.levels[level + 1]
     rc = ws_coarse.rhs
-    fill!(rc, zero(T))
     cfg_c_base = SolverConfig(nx_c, ny_c, nz_c, config.M, config.dt,
                               config.max_steps, config.epsilon)
     restrict_full_weighting!(rc, r, config, cfg_c_base)
 
     ec = ws_coarse.e
-    fill!(ec, zero(T))
-    bc0 = zero_boundary_conditions(T)
+    zero_interior!(ec, cfg_c_base)
+    bc0 = ws.bc0
     vcycle!(ec, rc, bc0, cfg_c_base, prob, ws;
             level=level + 1, max_level=max_level, min_n=min_n,
             nu1=nu1, nu2=nu2, dt_scale=dt_scale, M=M,
@@ -439,63 +419,4 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
                    corr_nu1=corr_nu1, corr_nu2=corr_nu2,
                    is_correction=is_correction,
                    bc_order=bc_order, debug_io=debug_io, debug_denom=debug_denom)
-end
-
-"""
-    two_level_mg_correction!(u, f, bc, config, prob;
-                             nu1=1, nu2=1, dt_scale=2.0, M=2, bc_order=:spec)
-
-Apply a 2-level MG correction using full-weighting restriction and trilinear prolongation.
-"""
-function two_level_mg_correction!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
-                                  config::SolverConfig, prob::ProblemSpec;
-                                  nu1::Int=1, nu2::Int=1, dt_scale::Real=2.0, M::Int=2,
-                                  bc_order::Symbol=:spec) where {T<:Real}
-    nx_c = Int(floor(config.nx / 2))
-    ny_c = Int(floor(config.ny / 2))
-    nz_c = Int(floor(config.nz / 2))
-    if nx_c < 4 || ny_c < 4 || nz_c < 4
-        return u
-    end
-
-    r = similar(u)
-    buffers_f = TaylorBuffers3D(similar(u), similar(u), similar(u))
-    taylor_smoother!(u, buffers_f, r, f, bc, config, prob; steps=nu1, bc_order=bc_order)
-
-    compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
-        r[i, j, k] = -r[i, j, k]
-    end
-    zero_ghost!(r, config)
-
-    rc = zeros(T, nx_c + 2, ny_c + 2, nz_c + 2)
-    cfg_c_base = SolverConfig(nx_c, ny_c, nz_c, M, config.dt,
-                              config.max_steps, config.epsilon)
-    restrict_full_weighting!(rc, r, config, cfg_c_base)
-
-    ec = zeros(T, nx_c + 2, ny_c + 2, nz_c + 2)
-    buffers_c = TaylorBuffers3D(similar(ec), similar(ec), similar(ec))
-    bc0 = zero_boundary_conditions(T)
-
-    dx, dy, dz = grid_spacing(cfg_c_base; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    denom = (one(T) / (dx * dx) + one(T) / (dy * dy) + one(T) / (dz * dz))
-    dt_corr = convert(T, dt_scale) * config.dt
-    if dt_corr * denom > 0.5
-        dt_corr = convert(T, 0.5) / denom
-    end
-    cfg_c = SolverConfig(nx_c, ny_c, nz_c, M, dt_corr, config.max_steps, config.epsilon)
-
-    rc_buf = similar(ec)
-    taylor_smoother!(ec, buffers_c, rc_buf, rc, bc0, cfg_c, prob; steps=1, bc_order=bc_order)
-
-    ef = zeros(T, config.nx + 2, config.ny + 2, config.nz + 2)
-    prolong_trilinear!(ef, ec, config, cfg_c)
-
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
-        u[i, j, k] += ef[i, j, k]
-    end
-    apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
-
-    taylor_smoother!(u, buffers_f, r, f, bc, config, prob; steps=nu2, bc_order=bc_order)
-    return u
 end

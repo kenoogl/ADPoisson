@@ -335,7 +335,8 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
                     mg_corr_M::Int=2, mg_corr_dt_scale::Real=1.0, mg_corr_steps::Int=1,
                     mg_corr_nu1::Union{Nothing,Int}=nothing,
                     mg_corr_nu2::Union{Nothing,Int}=nothing,
-                    debug_residual::Bool=false, debug_vcycle::Bool=false)
+                    debug_residual::Bool=false, debug_vcycle::Bool=false,
+                    mg_workspace=nothing)
     sol = initialize_solution(config, prob)
     bc = boundary_from_prob(prob)
 
@@ -367,7 +368,18 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
     if debug_vcycle
         println(vcycle_io, "# level nx ny res_l2_norm")
     end
-    mg_ws = (mg_vcycle && mg_interval > 0) ? build_mg_workspace(sol.u, config) : nothing
+    if mg_vcycle && mg_interval > 0
+        if mg_workspace !== nothing &&
+           size(mg_workspace.levels[1].r, 1) == config.nx + 2 &&
+           size(mg_workspace.levels[1].r, 2) == config.ny + 2 &&
+           size(mg_workspace.levels[1].r, 3) == config.nz + 2
+            mg_ws = mg_workspace
+        else
+            mg_ws = build_mg_workspace(sol.u, config)
+        end
+    else
+        mg_ws = nothing
+    end
 
     rnorm = r0 / denom
     t_start = time()
@@ -440,7 +452,8 @@ function solve_with_runtime(config::SolverConfig, prob::ProblemSpec;
                             mg_corr_M::Int=2, mg_corr_dt_scale::Real=1.0, mg_corr_steps::Int=1,
                             mg_corr_nu1::Union{Nothing,Int}=nothing,
                             mg_corr_nu2::Union{Nothing,Int}=nothing,
-                            debug_residual::Bool=false, debug_vcycle::Bool=false)
+                            debug_residual::Bool=false, debug_vcycle::Bool=false,
+                            mg_workspace=nothing)
     return solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
                       mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
                       mg_vcycle=mg_vcycle, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
@@ -448,7 +461,8 @@ function solve_with_runtime(config::SolverConfig, prob::ProblemSpec;
                       mg_correction=mg_correction,
                       mg_corr_M=mg_corr_M, mg_corr_dt_scale=mg_corr_dt_scale, mg_corr_steps=mg_corr_steps,
                       mg_corr_nu1=mg_corr_nu1, mg_corr_nu2=mg_corr_nu2,
-                      debug_residual=debug_residual, debug_vcycle=debug_vcycle)
+                      debug_residual=debug_residual, debug_vcycle=debug_vcycle,
+                      mg_workspace=mg_workspace)
 end
 
 """
@@ -465,7 +479,8 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_d
                mg_corr_M::Int=2, mg_corr_dt_scale::Real=1.0, mg_corr_steps::Int=1,
                mg_corr_nu1::Union{Nothing,Int}=nothing,
                mg_corr_nu2::Union{Nothing,Int}=nothing,
-               debug_residual::Bool=false, debug_vcycle::Bool=false)
+               debug_residual::Bool=false, debug_vcycle::Bool=false,
+               mg_workspace=nothing)
     sol, _ = solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
                         mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
                         mg_vcycle=mg_vcycle, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
@@ -473,6 +488,7 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_d
                         mg_correction=mg_correction,
                         mg_corr_M=mg_corr_M, mg_corr_dt_scale=mg_corr_dt_scale, mg_corr_steps=mg_corr_steps,
                         mg_corr_nu1=mg_corr_nu1, mg_corr_nu2=mg_corr_nu2,
-                        debug_residual=debug_residual, debug_vcycle=debug_vcycle)
+                        debug_residual=debug_residual, debug_vcycle=debug_vcycle,
+                        mg_workspace=mg_workspace)
     return sol
 end

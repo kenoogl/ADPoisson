@@ -337,8 +337,6 @@ vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
         corr_nu1::Union{Nothing,Int}=nothing,
         corr_nu2::Union{Nothing,Int}=nothing,
         nu1::Int=2, nu2::Int=2) where {T}
-pseudo_mg_correction!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
-                      cfg::SolverConfig; interval::Int=5) where {T}
 correction_taylor_solve!(e::Array{T,3}, r::Array{T,3}, cfg::SolverConfig;
                          M::Int=2, dt_scale::Real=1.0, steps::Int=1,
                          bc_order::Symbol=:spec,

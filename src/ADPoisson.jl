@@ -23,7 +23,7 @@ export plot_slice
 export sor_solve, sor_solve!, sor_solve_with_runtime
 export ssor_solve, ssor_solve!, ssor_solve_with_runtime
 export cg_solve, cg_solve!, cg_solve_with_runtime
-export pseudo_mg_correction!, restrict_full_weighting!, prolong_trilinear!, vcycle!, two_level_mg_correction!
+export restrict_full_weighting!, prolong_trilinear!, vcycle!
 export correction_taylor_solve!
 
 end # module
