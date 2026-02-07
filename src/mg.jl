@@ -385,7 +385,7 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
             is_correction=true,
             bc_order=bc_order, debug_io=debug_io, debug_denom=debug_denom)
 
-    ef = ws_level.e
+    ef = ws_level.tmp
     prolong_trilinear!(ef, ec, config, cfg_c_base)
     @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
         u[i, j, k] += ef[i, j, k]

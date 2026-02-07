@@ -380,7 +380,6 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
     else
         mg_ws = nothing
     end
-
     rnorm = r0 / denom
     t_start = time()
     while true
