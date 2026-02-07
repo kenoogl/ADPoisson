@@ -368,12 +368,13 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
 
     ws_coarse = ws.levels[level + 1]
     rc = ws_coarse.rhs
+    fill!(rc, zero(T))
     cfg_c_base = SolverConfig(nx_c, ny_c, nz_c, config.M, config.dt,
                               config.max_steps, config.epsilon)
     restrict_full_weighting!(rc, r, config, cfg_c_base)
 
     ec = ws_coarse.e
-    zero_interior!(ec, cfg_c_base)
+    fill!(ec, zero(T))
     bc0 = ws.bc0
     vcycle!(ec, rc, bc0, cfg_c_base, prob, ws;
             level=level + 1, max_level=max_level, min_n=min_n,
