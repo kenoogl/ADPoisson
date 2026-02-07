@@ -85,6 +85,12 @@ const DEFAULT_CLI_OPTS = Dict{String,Any}(
     "mg_vcycle_mode" => "uniform",
     "mg_level_Ms" => nothing,
     "mg_level_dt_scales" => nothing,
+    "mg_correction" => "classic",
+    "mg_corr_M" => 2,
+    "mg_corr_dt_scale" => 1.0,
+    "mg_corr_steps" => 1,
+    "mg_corr_nu1" => nothing,
+    "mg_corr_nu2" => nothing,
 )
 
 """

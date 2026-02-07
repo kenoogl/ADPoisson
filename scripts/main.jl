@@ -114,12 +114,15 @@ function parse_args(args)
     opts["mg_interval"] = 0
     opts["mg_dt_scale"] = 2.0
     opts["mg_M"] = 4
-    opts["mg_vcycle"] = false
     opts["mg_nu1"] = 1
     opts["mg_nu2"] = 1
-    opts["mg_vcycle_mode"] = "uniform"
     opts["mg_level_Ms"] = nothing
     opts["mg_level_dt_scales"] = nothing
+    opts["mg_corr_M"] = 2
+    opts["mg_corr_dt_scale"] = 1.0
+    opts["mg_corr_steps"] = 1
+    opts["mg_corr_nu1"] = nothing
+    opts["mg_corr_nu2"] = nothing
     opts["debug_residual"] = false
     opts["debug_vcycle"] = false
 
@@ -150,14 +153,26 @@ function parse_args(args)
                 opts["mg_dt_scale"] = parse(Float64, args[i + 1])
             elseif key == "mg-M" || key == "mg_M"
                 opts["mg_M"] = parse(Int, args[i + 1])
-            elseif key == "mg-vcycle" || key == "mg_vcycle"
-                opts["mg_vcycle"] = parse_bool(args[i + 1])
             elseif key == "mg-nu1" || key == "mg_nu1"
                 opts["mg_nu1"] = parse(Int, args[i + 1])
             elseif key == "mg-nu2" || key == "mg_nu2"
                 opts["mg_nu2"] = parse(Int, args[i + 1])
+            elseif key == "mg-vcycle" || key == "mg_vcycle"
+                error("--mg-vcycle is removed. Use --solver mg-uniform-taylor or mg-hierarchical-taylor.")
             elseif key == "mg-vcycle-mode" || key == "mg_vcycle_mode"
-                opts["mg_vcycle_mode"] = lowercase(args[i + 1])
+                error("--mg-vcycle-mode is removed. Use --solver mg-hierarchical-taylor.")
+            elseif key == "mg-correction" || key == "mg_correction"
+                error("--mg-correction is removed. Use --solver mg-correction-taylor.")
+            elseif key == "mg-corr-M" || key == "mg_corr_M"
+                opts["mg_corr_M"] = parse(Int, args[i + 1])
+            elseif key == "mg-corr-dt-scale" || key == "mg_corr_dt_scale"
+                opts["mg_corr_dt_scale"] = parse(Float64, args[i + 1])
+            elseif key == "mg-corr-steps" || key == "mg_corr_steps"
+                opts["mg_corr_steps"] = parse(Int, args[i + 1])
+            elseif key == "mg-corr-nu1" || key == "mg_corr_nu1"
+                opts["mg_corr_nu1"] = parse(Int, args[i + 1])
+            elseif key == "mg-corr-nu2" || key == "mg_corr_nu2"
+                opts["mg_corr_nu2"] = parse(Int, args[i + 1])
             elseif key == "mg-level-Ms" || key == "mg_level_Ms" || key == "mg-level-ms" || key == "mg_level_ms"
                 opts["mg_level_Ms"] = parse_int_list(args[i + 1])
             elseif key == "mg-level-dt-scales" || key == "mg_level_dt_scales"
@@ -217,41 +232,71 @@ function main()
                           Int(opts["M"]), dt, Int(opts["max_steps"]), opts["epsilon"])
     prob, _ = make_problem(config; alpha=opts["alpha"])
     bc_order = Symbol(opts["bc_order"])
-    solver = Symbol(lowercase(opts["solver"]))
+    solver_mode = lowercase(opts["solver"])
+    solver = :taylor
     cg_precond = Symbol(lowercase(opts["cg_precond"]))
     mg_interval = Int(opts["mg_interval"])
     mg_M = Int(opts["mg_M"])
     mg_dt_scale = Float64(opts["mg_dt_scale"])
-    mg_vcycle = Bool(opts["mg_vcycle"])
     mg_nu1 = Int(opts["mg_nu1"])
     mg_nu2 = Int(opts["mg_nu2"])
-    mg_vcycle_mode = String(opts["mg_vcycle_mode"])
     mg_level_Ms = opts["mg_level_Ms"]
     mg_level_dt_scales = opts["mg_level_dt_scales"]
-    (mg_vcycle_mode == "uniform" || mg_vcycle_mode == "hierarchical") ||
-        error("mg-vcycle-mode must be uniform/hierarchical")
+    mg_corr_M = Int(opts["mg_corr_M"])
+    mg_corr_dt_scale = Float64(opts["mg_corr_dt_scale"])
+    mg_corr_steps = Int(opts["mg_corr_steps"])
+    corr_nu1_set = opts["mg_corr_nu1"] !== nothing
+    corr_nu2_set = opts["mg_corr_nu2"] !== nothing
+    mg_corr_nu1 = corr_nu1_set ? Int(opts["mg_corr_nu1"]) : mg_corr_steps
+    mg_corr_nu2 = corr_nu2_set ? Int(opts["mg_corr_nu2"]) : mg_corr_steps
+    mg_vcycle = false
+    mg_vcycle_mode = "uniform"
+    mg_correction = "classic"
+    if solver_mode == "taylor" || solver_mode == "sor" || solver_mode == "ssor" || solver_mode == "cg"
+        solver = Symbol(solver_mode)
+    elseif solver_mode == "mg-uniform-taylor"
+        solver = :taylor
+        mg_vcycle = true
+        mg_vcycle_mode = "uniform"
+        mg_correction = "classic"
+    elseif solver_mode == "mg-hierarchical-taylor"
+        solver = :taylor
+        mg_vcycle = true
+        mg_vcycle_mode = "hierarchical"
+        mg_correction = "classic"
+    elseif solver_mode == "mg-correction-taylor"
+        solver = :taylor
+        mg_vcycle = true
+        mg_vcycle_mode = "uniform"
+        mg_correction = "correction-taylor"
+    else
+        error("solver must be taylor/sor/ssor/cg/mg-uniform-taylor/mg-hierarchical-taylor/mg-correction-taylor")
+    end
     use_hierarchical_taylor = (mg_vcycle_mode == "hierarchical")
+    if mg_vcycle && mg_interval == 0
+        @warn "mg solver selected; defaulting --mg-interval to 5"
+        mg_interval = 5
+    end
     debug_residual = Bool(opts["debug_residual"])
     debug_vcycle = Bool(opts["debug_vcycle"])
-    (solver === :taylor || solver === :sor || solver === :ssor || solver === :cg) ||
-        error("solver must be taylor/sor/ssor/cg")
     (cg_precond === :ssor || cg_precond === :none) ||
         error("cg-precond must be ssor/none")
-    if solver === :taylor && !mg_vcycle && use_hierarchical_taylor
-        @warn "--mg-vcycle-mode is only used when mg-vcycle=true; disabling hierarchical taylor"
-        use_hierarchical_taylor = false
-    end
-    if solver === :taylor && !mg_vcycle &&
+    if !mg_vcycle &&
        ((mg_level_Ms !== nothing) || (mg_level_dt_scales !== nothing))
-        @warn "mg-level-Ms/mg-level-dt-scales are ignored unless --mg-vcycle true"
+        @warn "mg-level-Ms/mg-level-dt-scales are ignored unless --solver mg-hierarchical-taylor"
         mg_level_Ms = nothing
         mg_level_dt_scales = nothing
     end
-    if solver === :taylor && mg_vcycle && !use_hierarchical_taylor &&
+    if mg_vcycle && !use_hierarchical_taylor &&
        ((mg_level_Ms !== nothing) || (mg_level_dt_scales !== nothing))
-        @warn "mg-level-Ms/mg-level-dt-scales are ignored unless --mg-vcycle-mode hierarchical"
+        @warn "mg-level-Ms/mg-level-dt-scales are ignored unless --solver mg-hierarchical-taylor"
         mg_level_Ms = nothing
         mg_level_dt_scales = nothing
+    end
+    if mg_correction == "classic" &&
+       (mg_corr_M != 2 || mg_corr_dt_scale != 1.0 || mg_corr_steps != 1 ||
+        corr_nu1_set || corr_nu2_set)
+        @warn "mg-corr-* options are ignored unless --solver mg-correction-taylor"
     end
     output_dir = string(opts["output_dir"])
     run_dir = make_run_dir(output_dir)
@@ -263,13 +308,15 @@ function main()
     @printf("  nx=%d ny=%d nz=%d M=%d\n", config.nx, config.ny, config.nz, config.M)
     @printf("  dt=%.3e max_steps=%d epsilon=%.3e\n", config.dt, config.max_steps, config.epsilon)
     @printf("  alpha=%.6f bc_order=%s\n", prob.alpha, string(bc_order))
-    @printf("  solver=%s\n", string(solver))
+    @printf("  solver=%s\n", solver_mode)
     if solver === :cg
         @printf("  cg_precond=%s\n", string(cg_precond))
     end
-    if solver === :taylor && mg_interval > 0
+    if mg_vcycle && mg_interval > 0
         @printf("  mg_vcycle=%s mg_vcycle_mode=%s mg_interval=%d mg_dt_scale=%.3f mg_M=%d mg_nu1=%d mg_nu2=%d\n",
                 string(mg_vcycle), mg_vcycle_mode, mg_interval, mg_dt_scale, mg_M, mg_nu1, mg_nu2)
+        @printf("  mg_correction=%s mg_corr_M=%d mg_corr_dt_scale=%.3f mg_corr_steps=%d mg_corr_nu1=%d mg_corr_nu2=%d\n",
+                mg_correction, mg_corr_M, mg_corr_dt_scale, mg_corr_steps, mg_corr_nu1, mg_corr_nu2)
     end
     @printf("  output_dir=%s\n", output_dir)
     @printf("  run_dir=%s\n", run_dir)
@@ -285,7 +332,7 @@ function main()
         "epsilon" => config.epsilon,
         "alpha" => prob.alpha,
         "bc_order" => string(bc_order),
-        "solver" => string(solver),
+        "solver" => solver_mode,
         "warmup" => true,
     )
     if solver === :taylor
@@ -296,11 +343,14 @@ function main()
         run_config["mg_interval"] = mg_interval
         run_config["mg_dt_scale"] = mg_dt_scale
         run_config["mg_M"] = mg_M
-        run_config["mg_vcycle"] = mg_vcycle
-        run_config["mg_vcycle_mode"] = mg_vcycle_mode
         run_config["mg_nu1"] = mg_nu1
         run_config["mg_nu2"] = mg_nu2
-        run_config["mg_hierarchical_taylor"] = use_hierarchical_taylor
+        run_config["mg_correction"] = mg_correction
+        run_config["mg_corr_M"] = mg_corr_M
+        run_config["mg_corr_dt_scale"] = mg_corr_dt_scale
+        run_config["mg_corr_steps"] = mg_corr_steps
+        run_config["mg_corr_nu1"] = mg_corr_nu1
+        run_config["mg_corr_nu2"] = mg_corr_nu2
         if mg_level_Ms !== nothing
             run_config["mg_level_Ms"] = mg_level_Ms
         end
@@ -322,11 +372,15 @@ function main()
     end
     warmup_solve(config, prob, bc_order, run_dir, solver, cg_precond)
     sol, runtime = if solver === :taylor
+        correction_mode = (mg_correction == "correction-taylor") ? :correction_taylor : :classic
         solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir,
                            mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
                            mg_vcycle=mg_vcycle, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
                            mg_level_Ms=(use_hierarchical_taylor ? mg_level_Ms : nothing),
                            mg_level_dt_scales=(use_hierarchical_taylor ? mg_level_dt_scales : nothing),
+                           mg_correction=correction_mode,
+                           mg_corr_M=mg_corr_M, mg_corr_dt_scale=mg_corr_dt_scale, mg_corr_steps=mg_corr_steps,
+                           mg_corr_nu1=mg_corr_nu1, mg_corr_nu2=mg_corr_nu2,
                            debug_residual=debug_residual, debug_vcycle=debug_vcycle)
     elseif solver === :sor
         sor_solve_with_runtime(prob, config; bc_order=bc_order, output_dir=run_dir)
@@ -359,7 +413,7 @@ function main()
         "error_plot" => "error_$(tag).png",
         "exact_plot" => "exact_nx$(config.nx)_ny$(config.ny)_nz$(config.nz).png",
     )
-    if solver === :taylor && mg_vcycle && mg_interval > 0
+    if mg_vcycle && mg_interval > 0
         levels, coarsest = mg_levels_and_coarsest(config)
         run_summary["mg_levels_used"] = levels
         run_summary["mg_coarsest_grid"] = coarsest

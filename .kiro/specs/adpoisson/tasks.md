@@ -176,13 +176,16 @@
 - [ ] 21. Correction-Taylor モード追加 (`src/mg.jl`)
   - `vcycle!` に `correction_mode=:classic/:correction-taylor` を追加
   - `correction-taylor` 時は coarse で $L e = -r$（$r=Lu-f$）を Taylor 擬似時間積分で解く
+  - coarse へは $-r$（$f-Lu$）を制限した右辺を用いる
   - coarse 補正ではゼロ Dirichlet 境界を適用
   - depends: [18]
   - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
   - _Design: 補正方程式の Taylor 化（Correction-Taylor）_
 - [ ] 22. CLI/設定追加 (`scripts/main.jl`)
-  - `--mg-correction`, `--mg-corr-M`, `--mg-corr-dt-scale`, `--mg-corr-steps` を追加
-  - `run_config.toml` へ `mg_correction`, `mg_corr_M`, `mg_corr_dt_scale`, `mg_corr_steps` を保存
+  - `--solver mg-correction-taylor` と `--mg-corr-M`, `--mg-corr-dt-scale`, `--mg-corr-steps` を追加
+  - **補正方程式（e）側**の pre/post 個別指定として `--mg-corr-nu1`, `--mg-corr-nu2` を追加
+  - `run_config.toml` へ `mg_correction`, `mg_corr_M`, `mg_corr_dt_scale`, `mg_corr_steps`,
+    `mg_corr_nu1`, `mg_corr_nu2` を保存
   - depends: [21]
   - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
   - _Design: 補正方程式の Taylor 化（Correction-Taylor）_

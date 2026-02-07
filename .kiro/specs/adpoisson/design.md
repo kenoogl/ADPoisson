@@ -273,6 +273,7 @@ Taylor 擬似時間法のスムーザ特性を利用し、低周波誤差の緩�
   - 残差: $r_\ell = L_\ell u_\ell - f_\ell$
   - 補正方程式: $L_\ell e_\ell = -r_\ell$
   - 擬似時間化: $(e_\ell)_t = L_\ell e_\ell + r_\ell$
+  - coarse へは $-r_\ell$（$f_\ell-L_\ell u_\ell$）を制限して右辺に使う
 - 漸化式:
   - $(e_\ell)_0 = 0$
   - $(e_\ell)_{m+1}=\frac{1}{m+1}\left(L_\ell (e_\ell)_m+\delta_{m0}r_\ell\right)$
@@ -283,6 +284,7 @@ Taylor 擬似時間法のスムーザ特性を利用し、低周波誤差の緩�
 - 反復:
   - 既定は固定回数 `mg_corr_steps`
   - 将来拡張として補正残差閾値 `mg_corr_epsilon` を許容
+  - **補正方程式（e）側**の pre/post を分ける場合は `mg_corr_nu1` / `mg_corr_nu2` を使用
 
 #### 関数シグネチャ（案）
 ```julia
@@ -296,6 +298,8 @@ vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
         level_Ms::Union{Nothing,Vector{Int}}=nothing,
         correction_mode::Symbol=:classic,
         corr_M::Int=2, corr_dt_scale::Real=1.0, corr_steps::Int=1,
+        corr_nu1::Union{Nothing,Int}=nothing,
+        corr_nu2::Union{Nothing,Int}=nothing,
         nu1::Int=2, nu2::Int=2) where {T}
 pseudo_mg_correction!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
                       cfg::SolverConfig; interval::Int=5) where {T}
@@ -391,8 +395,9 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 - 形式: `julia scripts/main.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --Fo=0.3 --max-steps=10000 --epsilon=1e-10 --alpha=1.0 --bc-order high --output-dir results`
 - 必須: `--nx,--ny,--nz`
 - 任意: `--M,--dt,--Fo,--max-steps,--epsilon,--alpha,--bc-order,--output-dir`（`--Fo` があれば `--dt` より優先、デフォルトは requirements.md に準拠）
-- MG関連（Taylorのみ）: `--mg-level,--mg-interval,--mg-dt-scale,--mg-M,--mg-nu1,--mg-nu2,--mg-level-Ms,--mg-level-dt-scales`
-- Correction-Taylor（Taylorのみ）: `--mg-correction,--mg-corr-M,--mg-corr-dt-scale,--mg-corr-steps`
+- ソルバー指定: `--solver taylor|sor|ssor|cg|mg-uniform-taylor|mg-hierarchical-taylor|mg-correction-taylor`
+- MG関連（`--solver mg-*` の場合）: `--mg-interval,--mg-dt-scale,--mg-M,--mg-nu1,--mg-nu2,--mg-level-Ms,--mg-level-dt-scales`
+- Correction-Taylor（`--solver mg-correction-taylor` の場合）: `--mg-corr-M,--mg-corr-dt-scale,--mg-corr-steps,--mg-corr-nu1,--mg-corr-nu2`
 - `mg_M` / `mg_dt_scale` のデフォルトは requirements.md に準拠（`mg_M=4`, `mg_dt_scale=2.0`）
 
 ## エラーハンドリング
