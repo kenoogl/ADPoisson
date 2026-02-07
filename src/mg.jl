@@ -168,6 +168,29 @@ function mg_dt_clipped(config::SolverConfig, prob::ProblemSpec, dt_scale::T) whe
     return dt_corr
 end
 
+"""
+    correction_taylor_solve!(e, r, bc, config, prob; M=2, dt_scale=1.0, steps=1, bc_order=:spec)
+
+Solve the correction equation L e = r using Taylor pseudo-time integration
+for a fixed number of steps, starting from e = 0.
+"""
+function correction_taylor_solve!(e::Array{T,3}, r::Array{T,3}, bc::BoundaryConditions,
+                                  config::SolverConfig, prob::ProblemSpec;
+                                  M::Int=2, dt_scale::Real=1.0, steps::Int=1,
+                                  bc_order::Symbol=:spec) where {T<:Real}
+    e .= zero(T)
+    buffers = TaylorBuffers3D(similar(e), similar(e), similar(e))
+    work = similar(e)
+    dt_corr = mg_dt_clipped(config, prob, convert(T, dt_scale))
+    M_corr = max(M, 1)
+    steps_corr = max(steps, 1)
+    cfg_corr = SolverConfig(config.nx, config.ny, config.nz, M_corr, dt_corr,
+                            config.max_steps, config.epsilon)
+    taylor_smoother!(e, buffers, work, r, bc, cfg_corr, prob;
+                     steps=steps_corr, bc_order=bc_order)
+    return e
+end
+
 function direct_solve_poisson!(u::Array{T,3}, f::Array{T,3},
                                config::SolverConfig, prob::ProblemSpec) where {T<:Real}
     nx = config.nx
@@ -218,7 +241,9 @@ end
             level=1, max_level=0, min_n=4,
             nu1=1, nu2=1, dt_scale=2.0, M=2,
             level_dt_scales=nothing, level_Ms=nothing,
-            bc_order=:spec)
+            correction_mode=:classic, corr_M=2, corr_dt_scale=1.0,
+            corr_steps=1, corr_nu1=nothing, corr_nu2=nothing,
+            is_correction=false, bc_order=:spec)
 
 Apply a recursive V-cycle to solve Lu = f using Taylor smoothing.
 """
@@ -227,6 +252,11 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
                  level::Int=1, max_level::Int=0, min_n::Int=4,
                  nu1::Int=1, nu2::Int=1, dt_scale::Real=2.0, M::Int=2,
                  level_dt_scales=nothing, level_Ms=nothing,
+                 correction_mode::Symbol=:classic,
+                 corr_M::Int=2, corr_dt_scale::Real=1.0, corr_steps::Int=1,
+                 corr_nu1::Union{Nothing,Int}=nothing,
+                 corr_nu2::Union{Nothing,Int}=nothing,
+                 is_correction::Bool=false,
                  bc_order::Symbol=:spec,
                  debug_io::Union{Nothing,IO}=nothing,
                  debug_denom::Union{Nothing,Real}=nothing) where {T<:Real}
@@ -234,9 +264,14 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
         max_level = mg_max_levels(config; min_n=min_n)
     end
     bc_order_level = level == 1 ? bc_order : :spec
-    dt_scale_level = mg_level_value(level_dt_scales, level, dt_scale)
-    M_level = mg_level_value(level_Ms, level, M)
+    corr_nu1_eff = (corr_nu1 === nothing) ? corr_steps : corr_nu1
+    corr_nu2_eff = (corr_nu2 === nothing) ? corr_steps : corr_nu2
+    use_corr_params = is_correction && (correction_mode === :correction_taylor)
+    dt_scale_level = use_corr_params ? corr_dt_scale : mg_level_value(level_dt_scales, level, dt_scale)
+    M_level = use_corr_params ? corr_M : mg_level_value(level_Ms, level, M)
     M_level = max(Int(M_level), 1)
+    nu1_level = use_corr_params ? corr_nu1_eff : nu1
+    nu2_level = use_corr_params ? corr_nu2_eff : nu2
     dt_corr = mg_dt_clipped(config, prob, convert(T, dt_scale_level))
     cfg_level = SolverConfig(config.nx, config.ny, config.nz, M_level,
                              dt_corr, config.max_steps, config.epsilon)
@@ -249,14 +284,20 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
                   (nx_c >= min_n) && (ny_c >= min_n) && (nz_c >= min_n)
 
     if !can_coarsen
-        direct_solve_poisson!(u, f, config, prob)
+        if is_correction && (correction_mode === :correction_taylor)
+            correction_taylor_solve!(u, f, bc, config, prob;
+                                     M=corr_M, dt_scale=corr_dt_scale, steps=corr_nu1_eff + corr_nu2_eff,
+                                     bc_order=:spec)
+        else
+            direct_solve_poisson!(u, f, config, prob)
+        end
         apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order_level)
         return u
     end
 
     r = similar(u)
     buffers = TaylorBuffers3D(similar(u), similar(u), similar(u))
-    taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu1, bc_order=bc_order_level)
+    taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu1_level, bc_order=bc_order_level)
 
     compute_residual_norm!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     if debug_io !== nothing
@@ -282,6 +323,10 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
             level=level + 1, max_level=max_level, min_n=min_n,
             nu1=nu1, nu2=nu2, dt_scale=dt_scale, M=M,
             level_dt_scales=level_dt_scales, level_Ms=level_Ms,
+            correction_mode=correction_mode,
+            corr_M=corr_M, corr_dt_scale=corr_dt_scale,
+            corr_steps=corr_steps, corr_nu1=corr_nu1, corr_nu2=corr_nu2,
+            is_correction=true,
             bc_order=bc_order, debug_io=debug_io, debug_denom=debug_denom)
 
     ef = zeros(T, config.nx + 2, config.ny + 2, config.nz + 2)
@@ -291,7 +336,7 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
     end
     apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order_level)
 
-    taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu2, bc_order=bc_order_level)
+    taylor_smoother!(u, buffers, r, f, bc, cfg_level, prob; steps=nu2_level, bc_order=bc_order_level)
     return u
 end
 

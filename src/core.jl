@@ -331,6 +331,10 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
                     mg_vcycle::Bool=false, mg_nu1::Int=1, mg_nu2::Int=1,
                     mg_level_Ms::Union{Nothing,AbstractVector{Int}}=nothing,
                     mg_level_dt_scales::Union{Nothing,AbstractVector{<:Real}}=nothing,
+                    mg_correction::Symbol=:classic,
+                    mg_corr_M::Int=2, mg_corr_dt_scale::Real=1.0, mg_corr_steps::Int=1,
+                    mg_corr_nu1::Union{Nothing,Int}=nothing,
+                    mg_corr_nu2::Union{Nothing,Int}=nothing,
                     debug_residual::Bool=false, debug_vcycle::Bool=false)
     sol = initialize_solution(config, prob)
     bc = boundary_from_prob(prob)
@@ -383,6 +387,9 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
                     nu1=mg_nu1, nu2=mg_nu2,
                     dt_scale=mg_dt_scale, M=mg_M,
                     level_dt_scales=mg_level_dt_scales, level_Ms=mg_level_Ms,
+                    correction_mode=mg_correction,
+                    corr_M=mg_corr_M, corr_dt_scale=mg_corr_dt_scale, corr_steps=mg_corr_steps,
+                    corr_nu1=mg_corr_nu1, corr_nu2=mg_corr_nu2,
                     bc_order=bc_order, debug_io=vcycle_io, debug_denom=denom)
         end
         res_l2 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
@@ -428,11 +435,18 @@ function solve_with_runtime(config::SolverConfig, prob::ProblemSpec;
                             mg_vcycle::Bool=false, mg_nu1::Int=1, mg_nu2::Int=1,
                             mg_level_Ms::Union{Nothing,AbstractVector{Int}}=nothing,
                             mg_level_dt_scales::Union{Nothing,AbstractVector{<:Real}}=nothing,
+                            mg_correction::Symbol=:classic,
+                            mg_corr_M::Int=2, mg_corr_dt_scale::Real=1.0, mg_corr_steps::Int=1,
+                            mg_corr_nu1::Union{Nothing,Int}=nothing,
+                            mg_corr_nu2::Union{Nothing,Int}=nothing,
                             debug_residual::Bool=false, debug_vcycle::Bool=false)
     return solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
                       mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
                       mg_vcycle=mg_vcycle, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
                       mg_level_Ms=mg_level_Ms, mg_level_dt_scales=mg_level_dt_scales,
+                      mg_correction=mg_correction,
+                      mg_corr_M=mg_corr_M, mg_corr_dt_scale=mg_corr_dt_scale, mg_corr_steps=mg_corr_steps,
+                      mg_corr_nu1=mg_corr_nu1, mg_corr_nu2=mg_corr_nu2,
                       debug_residual=debug_residual, debug_vcycle=debug_vcycle)
 end
 
@@ -446,11 +460,18 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_d
                mg_vcycle::Bool=false, mg_nu1::Int=1, mg_nu2::Int=1,
                mg_level_Ms::Union{Nothing,AbstractVector{Int}}=nothing,
                mg_level_dt_scales::Union{Nothing,AbstractVector{<:Real}}=nothing,
+               mg_correction::Symbol=:classic,
+               mg_corr_M::Int=2, mg_corr_dt_scale::Real=1.0, mg_corr_steps::Int=1,
+               mg_corr_nu1::Union{Nothing,Int}=nothing,
+               mg_corr_nu2::Union{Nothing,Int}=nothing,
                debug_residual::Bool=false, debug_vcycle::Bool=false)
     sol, _ = solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
                         mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
                         mg_vcycle=mg_vcycle, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
                         mg_level_Ms=mg_level_Ms, mg_level_dt_scales=mg_level_dt_scales,
+                        mg_correction=mg_correction,
+                        mg_corr_M=mg_corr_M, mg_corr_dt_scale=mg_corr_dt_scale, mg_corr_steps=mg_corr_steps,
+                        mg_corr_nu1=mg_corr_nu1, mg_corr_nu2=mg_corr_nu2,
                         debug_residual=debug_residual, debug_vcycle=debug_vcycle)
     return sol
 end

@@ -49,7 +49,7 @@
     - **RBSSOR の対称スイープ順**: 前進 R→B、後退 B→R、前進 B→R、後退 R→B（R=red, B=black）
     - SSOR 前処理では `order=:spec` を固定する（`order=:high` は使わない）
   - SSOR ソルバー（RBSSOR）を選択可能とする
-  - CLI は `--solver` で `taylor/sor/ssor/cg` を指定し、`--cg-precond` は `--solver=cg` のときのみ有効
+  - CLI は `--solver` で `taylor/sor/ssor/cg/mg-uniform-taylor/mg-hierarchical-taylor/mg-correction-taylor` を指定し、`--cg-precond` は `--solver=cg` のときのみ有効
 - [ ] **加速（マルチグリッド的アプローチ）**
   - Taylor 擬似時間法の残差履歴が「高周波が早く減衰し低周波が残る」挙動であるため、マルチグリッド的加速を検討する
   - **レベル1/2は実験済みで不採用**のため、実装対象外とする
@@ -90,9 +90,10 @@
     - 目的: V-cycle の coarse 補正で、誤差方程式 $L e = -r$ を Taylor 擬似時間積分で解く
       - 適用範囲: V-cycle の **全 coarse レベル**に適用
     - 定義:
-      - 残差は $r=Lu-f$ とする
-      - 補正擬似時間方程式を $e_t = L e + r$ とする
-      - 定常到達時に $L e = -r$ を満たす
+      - 残差は **全体で** $r=Lu-f$ とする
+      - 補正方程式は $L e = -r$ とする
+      - 補正擬似時間方程式を $e_t = L e + r$ とする（定常で $L e = -r$）
+      - coarse へは $-r$（$f-Lu$）を制限した右辺を用いる
     - レベル $\ell$ の補正漸化式:
       - 初期値は $e^{(\ell)}_0=0$
       - $$(e^{(\ell)})_{m+1}=\frac{1}{m+1}\Bigl((L_\ell e^{(\ell)}_m)+\delta_{m0}r_\ell\Bigr)$$
@@ -101,14 +102,18 @@
       - 補正方程式では coarse grid の境界をゼロ Dirichlet とする
       - fine 側の解更新後は元問題の境界条件を再適用する
     - 適用オプション:
-      - `--mg-correction` で `classic/correction-taylor` を指定可能とする（既定は `classic`）
-      - `correction-taylor` 選択時のみ `--mg-corr-M` / `--mg-corr-dt-scale` を有効にする
+      - `--solver mg-correction-taylor` で Correction-Taylor を有効化する
+      - `--mg-corr-M` / `--mg-corr-dt-scale` は `mg-correction-taylor` の場合のみ有効
       - 既定値: `mg_corr_M=2`, `mg_corr_dt_scale=1.0`, `mg_corr_steps=1`
+      - `--mg-corr-nu1` / `--mg-corr-nu2` で **補正方程式（e）側**の pre/post を個別指定できる
+        - 未指定時は `mg_corr_steps` を **pre/post 両方**に適用する
+        - 最粗格子は `mg_corr_nu1 + mg_corr_nu2` 回の Taylor 反復で近似する
     - 収束判定:
       - 全体収束判定は既存どおり $\|r\|_2 / \max(\|r_0\|_2,1)$
       - 補正ステップ内は固定回数反復を既定とし、将来拡張で閾値停止を許容
     - 出力:
-      - `run_config.toml` に `mg_correction`, `mg_corr_M`, `mg_corr_dt_scale`, `mg_corr_steps` を保存する
+      - `run_config.toml` に `mg_correction`, `mg_corr_M`, `mg_corr_dt_scale`, `mg_corr_steps`,
+        `mg_corr_nu1`, `mg_corr_nu2` を保存する
   - CG が適用可能であること（係数行列の対称性・正定性）を確認する
   - 出力は実行ごとの `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` を記録する
   - MG の履歴ファイル命名（レベル3のみ）:
@@ -187,7 +192,7 @@
 ## Julia実装
 - パラメータはコマンドラインで指定
   - $N_x, N_y, N_z$（または `n` で等方格子指定）, Taylor展開次数 $M$, $\Delta t$ または $Fo$, 最大ステップ数, 境界条件次数（`spec`/`high`）, 出力ディレクトリ
-  - ソルバー指定: `--solver taylor|sor|ssor|cg`（既定 `taylor`）
+  - ソルバー指定: `--solver taylor|sor|ssor|cg|mg-uniform-taylor|mg-hierarchical-taylor|mg-correction-taylor`（既定 `taylor`）
   - 前処理指定: `--cg-precond none|ssor`（`--solver=cg` の場合のみ有効）
   - 可視化は $y=0.5$ の断面（XZ面）をヒートマップ/コンターで表示し、解析解との誤差も可視化（出力先は指定可能）
   - 擬似時間ステップ履歴のファイル出力を行う

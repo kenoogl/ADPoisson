@@ -1,5 +1,31 @@
 # ADPoisson
 
+このコードで扱える解法（実験可能）:
+
+共通オプション（全ソルバー共通、以下の表から除外）:
+`--nx/--ny/--nz` または `--n`, `--max-steps`, `--epsilon`, `--alpha`, `--output-dir`
+補足: `--M`, `--dt`, `--Fo`, `--bc-order` の有効/無効は次のとおり。
+
+| solver | `--M` | `--dt/--Fo` | `--bc-order` |
+| --- | --- | --- | --- |
+| `taylor` | 有効 | 有効 | 有効 |
+| `sor` | 無視 | 無視 | 無視（`spec` 固定） |
+| `ssor` | 無視 | 無視 | 無視（`spec` 固定） |
+| `cg` | 無視 | 無視 | 無視（`spec` 固定） |
+| `mg-uniform-taylor` | 有効 | 有効 | 有効 |
+| `mg-hierarchical-taylor` | 有効 | 有効 | 有効 |
+| `mg-correction-taylor` | 有効 | 有効 | 有効 |
+
+| 分類 | solver | 概要 | solver固有オプション（共通を除外） |
+| --- | --- | --- | --- |
+| Taylor | `taylor` | 擬似時間の Taylor 展開で Poisson を反復的に解く基本ソルバー | `--M`, `--dt`/`--Fo`, `--bc-order` |
+| SOR | `sor` | 赤黒 SOR による反復解法 | （なし） |
+| SSOR | `ssor` | 赤黒（RB）SSOR による反復解法 | （なし） |
+| CG | `cg` | 共役勾配法（必要に応じて SSOR 前処理） | `--cg-precond` |
+| MG | `mg-uniform-taylor` | Taylor スムーザを用いた V-cycle | `--M`, `--dt`/`--Fo`, `--bc-order`, `--mg-interval`, `--mg-M`, `--mg-dt-scale`, `--mg-nu1`, `--mg-nu2` |
+| MG | `mg-hierarchical-taylor` | レベルごとに `M` と `dt` を変えるスムーザ設定 | `--M`, `--dt`/`--Fo`, `--bc-order`, `--mg-interval`, `--mg-M`, `--mg-dt-scale`, `--mg-nu1`, `--mg-nu2`, `--mg-level-Ms`, `--mg-level-dt-scales` |
+| MG | `mg-correction-taylor` | coarse 補正方程式 $L e = -r$ を Taylor 擬似時間で解く | `--M`, `--dt`/`--Fo`, `--bc-order`, `--mg-interval`, `--mg-M`, `--mg-dt-scale`, `--mg-nu1`, `--mg-nu2`, `--mg-corr-M`, `--mg-corr-dt-scale`, `--mg-corr-steps`, `--mg-corr-nu1`, `--mg-corr-nu2` |
+
 Taylor級数による擬似時間発展法で 3D Poisson 方程式を解くソルバーです。
 
 **要件**
@@ -31,26 +57,27 @@ julia --project scripts/main.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsi
   - 相対残差は $\|r\|_2 / \max(\|r_0\|_2, 1)$（$r=Lu-f$、$r_0$ は初期残差、内点のみ評価）
 - `--alpha`: 境界条件パラメータ（デフォルト: 1.0）
 - `--bc-order`: 境界条件の次数（`spec` または `high`、デフォルト: `spec`）
-  - `--solver taylor` の場合のみ有効（反復解法では `spec` に固定）
+  - Taylor 系（`taylor` / `mg-*`）のみ有効（反復解法では `spec` に固定）
 - `--output-dir`: 出力ディレクトリ（デフォルト: `results`。存在しない場合は作成）
-- `--solver`: 実行するソルバー（`taylor` / `sor` / `ssor` / `cg`、デフォルト: `taylor`）
+- `--solver`: 実行するソルバー（`taylor` / `sor` / `ssor` / `cg` / `mg-uniform-taylor` / `mg-hierarchical-taylor` / `mg-correction-taylor`。デフォルト: `taylor`）
 - `--cg-precond`: CG の前処理（`ssor` / `none`、デフォルト: `none`）
 - `--mg-interval`: MG補正の適用間隔（0 で無効、デフォルト: 0）
-- `--mg-vcycle`: V-cycle MG を有効化するか（`true` / `false`、デフォルト: `false`）
+  - `--solver mg-*` の場合、未指定なら 5 に自動設定される（非 MG では無視される）
 - レベル1/2（疑似MG/2-level MG）は実験済みで不採用のため、MG加速は V-cycle のみ対応
 - `--mg-dt-scale`: MG補正ステップ用 `dt` 係数（デフォルト: 2.0）
 - `--mg-M`: MG補正ステップに使う Taylor 次数（デフォルト: 4）
-- `--mg-nu1`: MG の前スムージング回数（デフォルト: 1）
-- `--mg-nu2`: MG の後スムージング回数（デフォルト: 1）
-- `--mg-vcycle-mode`: V-cycle の更新モード（`uniform` / `hierarchical`、デフォルト: `uniform`）
-  - `uniform`: 全レベルで `mg_M`, `mg_dt_scale` を共通使用
-  - `hierarchical`: レベル別に `mg_level_Ms`, `mg_level_dt_scales` を使用
-- `--mg-correction`: coarse 補正の解法（`classic` / `correction-taylor`、デフォルト: `classic`）
-  - `classic`: coarse 補正は従来方式（最粗格子は直接解法 `A \ b`）
-  - `correction-taylor`: coarse 補正方程式 $L e = -r$ を Taylor 擬似時間で解く
+- `--mg-nu1`: **主方程式（u）側**の前スムージング回数（デフォルト: 1）
+- `--mg-nu2`: **主方程式（u）側**の後スムージング回数（デフォルト: 1）
+- `--solver mg-uniform-taylor`: 全レベルで `mg_M`, `mg_dt_scale` を共通使用
+- `--solver mg-hierarchical-taylor`: レベル別に `mg_level_Ms`, `mg_level_dt_scales` を使用
+- `--solver mg-correction-taylor`: coarse 補正方程式 $L e = -r$（$r=Lu-f$）を Taylor 擬似時間で解く
+  - coarse へは $-r$（$f-Lu$）を制限して右辺に使う
 - `--mg-corr-M`: `correction-taylor` 用の Taylor 次数（デフォルト: 2）
 - `--mg-corr-dt-scale`: `correction-taylor` 用の `dt` スケール（デフォルト: 1.0）
 - `--mg-corr-steps`: `correction-taylor` の反復回数（デフォルト: 1）
+  - `--mg-corr-nu1/--mg-corr-nu2` 未指定時に `nu1=nu2=mg-corr-steps` として利用
+- `--mg-corr-nu1`: **補正方程式（e）側**の前スムージング回数（デフォルト: `mg-corr-steps`）
+- `--mg-corr-nu2`: **補正方程式（e）側**の後スムージング回数（デフォルト: `mg-corr-steps`）
 - `--mg-level-Ms`: 階層 Taylor のレベル別 `M`（例: `4,4,2,2`。未指定時は全レベルで `mg_M`）
 - `--mg-level-dt-scales`: 階層 Taylor のレベル別 `dt` スケール（例: `2.0,2.0,4.0,4.0`。未指定時は全レベルで `mg_dt_scale`）
   - `mg-level-Ms` と `mg-level-dt-scales` は同じレベル番号（1=最細）で対応づけて使用する
@@ -59,9 +86,11 @@ julia --project scripts/main.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsi
   - `dt` は各レベルで Fo 条件によりクリップされるため、`dt-scale` を上げても効果が頭打ちになる場合がある
 
 **MG オプションの関係**
-- `--mg-vcycle` が `true` の場合のみ MG 加速が有効。
-- `--mg-vcycle-mode` は V-cycle の **Taylor スムーザ設定**を決める（`uniform`/`hierarchical`）。
-- `--mg-correction` は coarse 補正の **解き方**を決める（`classic`/`correction-taylor`）。
+- MG を使う場合は `--solver mg-*` を指定する。
+- **主方程式（u）側**: `--mg-M` / `--mg-dt-scale` / `--mg-level-*` / `--mg-nu1/--mg-nu2` が、
+  V-cycle の **u 更新スムーザ**（pre/post）を決める。
+- **補正方程式（e）側**: `--mg-corr-*` が、
+  coarse 補正 $L e = -r$ の **解き方と反復回数**を決める。
 
 **推奨設定**
 - 拡散数 `Fo = Δt(1/Δx^2 + 1/Δy^2 + 1/Δz^2)` を `0.5` 以下にする
@@ -77,7 +106,7 @@ julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); max_steps=Int(ceil(0.5
 
 出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（デフォルト: `results/`）。
 実行条件と結果の確認用に `run_config.toml` と `run_summary.toml` を出力します。
-`--mg-vcycle true` の場合、`mg_levels_used`（使用レベル数）と `mg_coarsest_grid`（最粗格子の `nx,ny,nz`）を記録します。
+`--solver mg-*` の場合、`mg_levels_used`（使用レベル数）と `mg_coarsest_grid`（最粗格子の `nx,ny,nz`）を記録します。
 - `exact_nx{nx}_ny{ny}_nz{nz}.png`（解析解のため格子情報のみ）
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
 - `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
@@ -93,22 +122,23 @@ julia --project scripts/main.jl --solver cg --cg-precond ssor --nx 32 --ny 32 --
 julia --project scripts/main.jl --solver sor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
 ```
 
-**V-cycle MG（Taylorのみ）実行例**
+**Uniform Taylor (V-cycle MG) 実行例**
 ```bash
-julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-vcycle true --mg-vcycle-mode uniform --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
+julia --project scripts/main.jl --solver mg-uniform-taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
 ```
-階層 Taylor を使う場合（レベル別に `M` と `dt` を指定）:
+**Hierarchical Taylor (V-cycle MG) 実行例**
 ```bash
-julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-vcycle true --mg-vcycle-mode hierarchical --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --mg-level-Ms 4,4,2,2 --mg-level-dt-scales 2.0,2.0,4.0,4.0 --output-dir results
+julia --project scripts/main.jl --solver mg-hierarchical-taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --mg-level-Ms 4,4,2,2 --mg-level-dt-scales 2.0,2.0,4.0,4.0 --output-dir results
 ```
-Correction-Taylor を使う場合（coarse 補正を Taylor 擬似時間で解く）:
+**Correction-Taylor (V-cycle MG) 実行例**
 ```bash
-julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-vcycle true --mg-vcycle-mode uniform --mg-correction correction-taylor --mg-corr-M 2 --mg-corr-dt-scale 1.0 --mg-corr-steps 1 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
+julia --project scripts/main.jl --solver mg-correction-taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-corr-M 2 --mg-corr-dt-scale 1.0 --mg-corr-nu1 1 --mg-corr-nu2 1 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
 ```
 補足:
 - V-cycle は `--mg-interval` ごとに適用されます（`0` で無効）。
 - `nx,ny,nz` が偶数で段階的に 1/2 にできる場合にのみ多段化します。
-- 最粗格子では密行列を組み、`A \ b`（Julia の直接解法/LU ベース）で解きます。
+- `mg-uniform-taylor` / `mg-hierarchical-taylor` の場合、最粗格子は密行列を組み、`A \ b`（Julia の直接解法/LU ベース）で解きます。
+- `mg-correction-taylor` の場合、最粗格子も correction‑taylor（Taylor 擬似時間）で解きます。
 
 ### **テスト**
 ```bash
