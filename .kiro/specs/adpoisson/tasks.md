@@ -195,3 +195,12 @@
   - depends: [21, 22]
   - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
   - _Design: テスト戦略_
+- [ ] 24. MGワークスペース導入（バッファ再利用） (`src/mg.jl`)
+  - V-cycle 内の `zeros/similar` を排除し、レベルごとに `r/rhs/e/tmp/taylor` を事前確保
+  - `MGLevelWorkspace` / `MGWorkspace` を定義し `vcycle!` に渡す
+  - coarse RHS は `levels[level+1].rhs` を再利用し、補間結果は `levels[level].e` に保持
+  - `correction_taylor_solve!` はワークバッファ引数を受け取り再確保しない
+  - `classic` の最粗格子は `A` と factorization をキャッシュして再利用
+  - depends: [18]
+  - _Requirements: MGバッファ再利用_
+  - _Design: MGワークスペース（バッファ再利用）_

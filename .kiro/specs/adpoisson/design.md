@@ -286,6 +286,42 @@ Taylor 擬似時間法のスムーザ特性を利用し、低周波誤差の緩�
   - 将来拡張として補正残差閾値 `mg_corr_epsilon` を許容
   - **補正方程式（e）側**の pre/post を分ける場合は `mg_corr_nu1` / `mg_corr_nu2` を使用
 
+#### MGワークスペース（バッファ再利用）
+V-cycle 内の配列再確保を排除し、メモリ帯域とGC負荷を下げる。
+- **方針**: レベルごとの作業配列を初回に確保し、以降は `fill!` で再利用する（`zeros/similar` を反復内で呼ばない）。
+- **構造**: レベルごとに必要なバッファを持つ `MGLevelWorkspace` を用意し、`MGWorkspace` に集約する。
+  - `r` : 残差（$r=L u - f$）
+  - `rhs` : 右辺（fine では入力 `f`、coarse では制限残差）
+  - `e` : 補正（coarse で計算、fine へ補間）
+  - `taylor` : `TaylorBuffers3D`（smoother / correction-taylor 共用）
+  - `tmp` : Taylor更新や補間で使う汎用作業配列
+- **coarse 右辺の運用**:
+  - `restrict_full_weighting!` は `ws.levels[level+1].rhs` に書き込む。
+  - coarse level の `rhs` は次段 `vcycle!` の入力として再利用。
+- **補正の運用**:
+  - `correction-taylor` は `ws.levels[level+1].e` に結果を格納。
+  - `prolong_trilinear!` で fine 側 `ws.levels[level].e` に補間し、`u .+= e` する。
+- **最粗格子の直接解法キャッシュ**（classic の場合）:
+  - `MGWorkspace` に最粗格子の `A` と `factorization` を保持し、格子サイズが同じ限り再利用。
+  - `A`/`factorization` が未構築なら初回に生成し、以降の V-cycle では再生成しない。
+
+**構造例**:
+```julia
+struct MGLevelWorkspace{T}
+    r::Array{T,3}
+    rhs::Array{T,3}
+    e::Array{T,3}
+    taylor::TaylorBuffers3D{T}
+    tmp::Array{T,3}
+end
+
+struct MGWorkspace{T}
+    levels::Vector{MGLevelWorkspace{T}}
+    coarse_A::Union{Nothing,Array{T,2}}
+    coarse_fact::Union{Nothing,Factorization{T}}
+end
+```
+
 #### 関数シグネチャ（案）
 ```julia
 restrict_full_weighting!(rc::Array{T,3}, rf::Array{T,3},
@@ -293,7 +329,7 @@ restrict_full_weighting!(rc::Array{T,3}, rf::Array{T,3},
 prolong_trilinear!(ef::Array{T,3}, ec::Array{T,3},
                    cfg_f::SolverConfig, cfg_c::SolverConfig) where {T}
 vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
-        cfg_f::SolverConfig, level::Int, max_level::Int;
+        cfg_f::SolverConfig, level::Int, max_level::Int, ws::MGWorkspace{T};
         level_dt_scales::Union{Nothing,Vector{<:Real}}=nothing,
         level_Ms::Union{Nothing,Vector{Int}}=nothing,
         correction_mode::Symbol=:classic,
@@ -305,7 +341,8 @@ pseudo_mg_correction!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
                       cfg::SolverConfig; interval::Int=5) where {T}
 correction_taylor_solve!(e::Array{T,3}, r::Array{T,3}, cfg::SolverConfig;
                          M::Int=2, dt_scale::Real=1.0, steps::Int=1,
-                         bc_order::Symbol=:spec) where {T}
+                         bc_order::Symbol=:spec,
+                         buffers::TaylorBuffers3D{T}, work::Array{T,3}) where {T}
 ```
 
 ```julia
