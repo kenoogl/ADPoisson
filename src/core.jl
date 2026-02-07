@@ -367,6 +367,7 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
     if debug_vcycle
         println(vcycle_io, "# level nx ny res_l2_norm")
     end
+    mg_ws = (mg_vcycle && mg_interval > 0) ? build_mg_workspace(sol.u, config) : nothing
 
     rnorm = r0 / denom
     t_start = time()
@@ -383,7 +384,7 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
         taylor_series_update_reuse!(sol.u, buffers, r, f, bc, config, prob; bc_order=bc_order)
         iter += 1
         if mg_vcycle && mg_interval > 0 && (iter % mg_interval == 0)
-            vcycle!(sol.u, f, bc, config, prob;
+            vcycle!(sol.u, f, bc, config, prob, mg_ws;
                     nu1=mg_nu1, nu2=mg_nu2,
                     dt_scale=mg_dt_scale, M=mg_M,
                     level_dt_scales=mg_level_dt_scales, level_Ms=mg_level_Ms,
