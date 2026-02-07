@@ -37,6 +37,7 @@ julia --project scripts/main.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsi
 - `--cg-precond`: CG の前処理（`ssor` / `none`、デフォルト: `none`）
 - `--mg-interval`: MG補正の適用間隔（0 で無効、デフォルト: 0）
 - `--mg-vcycle`: V-cycle MG を有効化するか（`true` / `false`、デフォルト: `false`）
+- レベル1/2（疑似MG/2-level MG）は実験済みで不採用のため、MG加速は V-cycle のみ対応
 - `--mg-dt-scale`: MG補正ステップ用 `dt` 係数（デフォルト: 2.0）
 - `--mg-M`: MG補正ステップに使う Taylor 次数（デフォルト: 4）
 - `--mg-nu1`: MG の前スムージング回数（デフォルト: 1）
@@ -44,12 +45,23 @@ julia --project scripts/main.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsi
 - `--mg-vcycle-mode`: V-cycle の更新モード（`uniform` / `hierarchical`、デフォルト: `uniform`）
   - `uniform`: 全レベルで `mg_M`, `mg_dt_scale` を共通使用
   - `hierarchical`: レベル別に `mg_level_Ms`, `mg_level_dt_scales` を使用
+- `--mg-correction`: coarse 補正の解法（`classic` / `correction-taylor`、デフォルト: `classic`）
+  - `classic`: coarse 補正は従来方式（最粗格子は直接解法 `A \ b`）
+  - `correction-taylor`: coarse 補正方程式 $L e = -r$ を Taylor 擬似時間で解く
+- `--mg-corr-M`: `correction-taylor` 用の Taylor 次数（デフォルト: 2）
+- `--mg-corr-dt-scale`: `correction-taylor` 用の `dt` スケール（デフォルト: 1.0）
+- `--mg-corr-steps`: `correction-taylor` の反復回数（デフォルト: 1）
 - `--mg-level-Ms`: 階層 Taylor のレベル別 `M`（例: `4,4,2,2`。未指定時は全レベルで `mg_M`）
 - `--mg-level-dt-scales`: 階層 Taylor のレベル別 `dt` スケール（例: `2.0,2.0,4.0,4.0`。未指定時は全レベルで `mg_dt_scale`）
   - `mg-level-Ms` と `mg-level-dt-scales` は同じレベル番号（1=最細）で対応づけて使用する
   - 配列長がレベル数より短い場合は最後の値を繰り返して適用する
   - 2つは独立指定だが実効的には連成する（同一レベルで `M` を下げるほど `dt` を大きくしすぎない方が安定しやすい）
   - `dt` は各レベルで Fo 条件によりクリップされるため、`dt-scale` を上げても効果が頭打ちになる場合がある
+
+**MG オプションの関係**
+- `--mg-vcycle` が `true` の場合のみ MG 加速が有効。
+- `--mg-vcycle-mode` は V-cycle の **Taylor スムーザ設定**を決める（`uniform`/`hierarchical`）。
+- `--mg-correction` は coarse 補正の **解き方**を決める（`classic`/`correction-taylor`）。
 
 **推奨設定**
 - 拡散数 `Fo = Δt(1/Δx^2 + 1/Δy^2 + 1/Δz^2)` を `0.5` 以下にする
@@ -88,6 +100,10 @@ julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-step
 階層 Taylor を使う場合（レベル別に `M` と `dt` を指定）:
 ```bash
 julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-vcycle true --mg-vcycle-mode hierarchical --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --mg-level-Ms 4,4,2,2 --mg-level-dt-scales 2.0,2.0,4.0,4.0 --output-dir results
+```
+Correction-Taylor を使う場合（coarse 補正を Taylor 擬似時間で解く）:
+```bash
+julia --project scripts/main.jl --solver taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-vcycle true --mg-vcycle-mode uniform --mg-correction correction-taylor --mg-corr-M 2 --mg-corr-dt-scale 1.0 --mg-corr-steps 1 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
 ```
 補足:
 - V-cycle は `--mg-interval` ごとに適用されます（`0` で無効）。

@@ -52,12 +52,13 @@
   - CLI は `--solver` で `taylor/sor/ssor/cg` を指定し、`--cg-precond` は `--solver=cg` のときのみ有効
 - [ ] **加速（マルチグリッド的アプローチ）**
   - Taylor 擬似時間法の残差履歴が「高周波が早く減衰し低周波が残る」挙動であるため、マルチグリッド的加速を検討する
-  - **レベル1（疑似MG）**:
-    - 数ステップごとに残差 $r=f-Lu$ を計算し、強めの Taylor ステップ（大きめ $\Delta t$ / 低次）で補正を入れる簡易方式
+  - **レベル1/2は実験済みで不採用**のため、実装対象外とする
+  - **レベル1（疑似MG, 不採用）**:
+    - 数ステップごとに残差 $r=Lu-f$ を計算し、強めの Taylor ステップ（大きめ $\Delta t$ / 低次）で補正を入れる簡易方式
     - 粗格子を明示的に持たず、低周波成分の緩和を狙う
     - 補正ステップでも Fo クリップを適用し、$\Delta t$ は既存の Fo 上限を超えない
     - 適用条件は Taylor 法と同一（高次境界を使う場合は `nx,ny,nz>=4`）
-  - **レベル2（2-level MG）**:
+  - **レベル2（2-level MG, 不採用）**:
     - coarse grid を 1段（$N/2$）構築し、制限 $R$ / 補間 $P$ による補正を行う
     - スムーザは Taylor 擬似時間ステップ（$\nu_1,\nu_2$ 回）を用いる
     - 粗格子サイズは内点数で $(n_x,n_y,n_z)\mapsto(\lfloor n_x/2\rfloor,\lfloor n_y/2\rfloor,\lfloor n_z/2\rfloor)$ とし、
@@ -81,15 +82,36 @@
     - 漸化式は各レベルで同一:
       $$(u^{(\ell)})_{m+1}=\frac{1}{m+1}\Bigl((L_\ell u^{(\ell)}_m)-(f_\ell)_m\Bigr)$$
       $f$ が擬似時間一定なら $(f_\ell)_0=f_\ell,\ (f_\ell)_m=0\ (m\ge1)$
-    - **誤差方程式** $L e = r$ を解く場合は、粗格子で **境界条件はゼロ（Dirichlet）** とする
+    - **誤差方程式** $L e = -r$（$r=Lu-f$）を解く場合は、粗格子で **境界条件はゼロ（Dirichlet）** とする
     - `mg_level_Ms` / `mg_level_dt_scales` は `run_config.toml` に保存する
     - `mg_M` のデフォルトは **4**、`mg_dt_scale` のデフォルトは **2.0**
     - 最粗格子は内点数がいずれか 4 未満になった時点で停止する
+  - **補正方程式の Taylor 化（Correction-Taylor）**:
+    - 目的: V-cycle の coarse 補正で、誤差方程式 $L e = -r$ を Taylor 擬似時間積分で解く
+      - 適用範囲: V-cycle の **全 coarse レベル**に適用
+    - 定義:
+      - 残差は $r=Lu-f$ とする
+      - 補正擬似時間方程式を $e_t = L e + r$ とする
+      - 定常到達時に $L e = -r$ を満たす
+    - レベル $\ell$ の補正漸化式:
+      - 初期値は $e^{(\ell)}_0=0$
+      - $$(e^{(\ell)})_{m+1}=\frac{1}{m+1}\Bigl((L_\ell e^{(\ell)}_m)+\delta_{m0}r_\ell\Bigr)$$
+      - $e^{(\ell)}_{\text{new}} = e^{(\ell)} + \sum_{m=1}^{M_\ell} (\Delta t_\ell)^m (e^{(\ell)})_m$
+    - 境界条件:
+      - 補正方程式では coarse grid の境界をゼロ Dirichlet とする
+      - fine 側の解更新後は元問題の境界条件を再適用する
+    - 適用オプション:
+      - `--mg-correction` で `classic/correction-taylor` を指定可能とする（既定は `classic`）
+      - `correction-taylor` 選択時のみ `--mg-corr-M` / `--mg-corr-dt-scale` を有効にする
+      - 既定値: `mg_corr_M=2`, `mg_corr_dt_scale=1.0`, `mg_corr_steps=1`
+    - 収束判定:
+      - 全体収束判定は既存どおり $\|r\|_2 / \max(\|r_0\|_2,1)$
+      - 補正ステップ内は固定回数反復を既定とし、将来拡張で閾値停止を許容
+    - 出力:
+      - `run_config.toml` に `mg_correction`, `mg_corr_M`, `mg_corr_dt_scale`, `mg_corr_steps` を保存する
   - CG が適用可能であること（係数行列の対称性・正定性）を確認する
   - 出力は実行ごとの `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` を記録する
-  - MG の履歴ファイル命名:
-    - レベル1: `history_mg1_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
-    - レベル2: `history_mg2_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+  - MG の履歴ファイル命名（レベル3のみ）:
     - レベル3: `history_vcycle_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 - [ ] **Taylor級数漸化式（3D Poisson, 擬似時間）**
   - 詳細は `/Users/Daily/Development/ADTM/ADPoisson漸化式.md` に準拠

@@ -230,10 +230,12 @@ ssor_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::Probl
 Taylor 擬似時間法のスムーザ特性を利用し、低周波誤差の緩和を狙う。
 
 #### レベル1（疑似MG）
-- 数ステップごとに残差 $r=f-Lu$ を計算し、補正用の Taylor ステップを実行する
+※ 実験済みで不採用（実装対象外）
+- 数ステップごとに残差 $r=Lu-f$ を計算し、補正用の Taylor ステップを実行する
 - 補正ステップの $\Delta t$ も Fo クリップを適用して安定性を確保する
 
 #### レベル2（2-level MG）
+※ 実験済みで不採用（実装対象外）
 - coarse grid を 1段生成し、制限 $R$ / 補間 $P$ により補正を加える
 - coarse grid の境界値は boundary function から直接評価する
 - 制限 $R$ は 3D full-weighting、補間 $P$ は trilinear を基本とする
@@ -258,9 +260,29 @@ Taylor 擬似時間法のスムーザ特性を利用し、低周波誤差の緩�
   - $u^{(\ell)}_0 = u$
   - $u^{(\ell)}_{m+1}=\frac{1}{m+1}\Bigl(L_\ell u^{(\ell)}_m - \delta_{m0} f_\ell\Bigr)$
   - 更新: $u^{new} = u + \sum_{m=1}^{M_\ell} (\Delta t_\ell)^m u^{(\ell)}_m$
-- 誤差方程式 $L e = r$ を解く場合は **coarse の境界条件はゼロ Dirichlet** を用いる
+- 誤差方程式 $L e = -r$（$r=Lu-f$）を解く場合は **coarse の境界条件はゼロ Dirichlet** を用いる
 - CLI で受け取った `mg_level_Ms` / `mg_level_dt_scales` は `solve_with_runtime` 経由で `vcycle!` の `level_Ms` / `level_dt_scales` に渡す
 - `run_config.toml` に配列値を保存する
+
+#### 補正方程式の Taylor 化（Correction-Taylor）
+- 位置づけ:
+  - `classic`: coarse で直接解法（既存）
+  - `correction-taylor`: coarse の補正方程式を Taylor 擬似時間で解く
+  - 適用範囲: V-cycle の **全 coarse レベル**に適用（最粗格子も含む）
+- 基本式:
+  - 残差: $r_\ell = L_\ell u_\ell - f_\ell$
+  - 補正方程式: $L_\ell e_\ell = -r_\ell$
+  - 擬似時間化: $(e_\ell)_t = L_\ell e_\ell + r_\ell$
+- 漸化式:
+  - $(e_\ell)_0 = 0$
+  - $(e_\ell)_{m+1}=\frac{1}{m+1}\left(L_\ell (e_\ell)_m+\delta_{m0}r_\ell\right)$
+  - $e_\ell \leftarrow e_\ell + \sum_{m=1}^{M_\ell} (\Delta t_\ell)^m (e_\ell)_m$
+- 境界条件:
+  - 補正方程式では coarse 側の境界はゼロ Dirichlet
+  - fine 側へ補間して `u += e` した後に元問題の BC を再適用
+- 反復:
+  - 既定は固定回数 `mg_corr_steps`
+  - 将来拡張として補正残差閾値 `mg_corr_epsilon` を許容
 
 #### 関数シグネチャ（案）
 ```julia
@@ -272,9 +294,14 @@ vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
         cfg_f::SolverConfig, level::Int, max_level::Int;
         level_dt_scales::Union{Nothing,Vector{<:Real}}=nothing,
         level_Ms::Union{Nothing,Vector{Int}}=nothing,
+        correction_mode::Symbol=:classic,
+        corr_M::Int=2, corr_dt_scale::Real=1.0, corr_steps::Int=1,
         nu1::Int=2, nu2::Int=2) where {T}
 pseudo_mg_correction!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
                       cfg::SolverConfig; interval::Int=5) where {T}
+correction_taylor_solve!(e::Array{T,3}, r::Array{T,3}, cfg::SolverConfig;
+                         M::Int=2, dt_scale::Real=1.0, steps::Int=1,
+                         bc_order::Symbol=:spec) where {T}
 ```
 
 ```julia
@@ -351,8 +378,6 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 - `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 - `history_ssor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 - `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
-- `history_mg1_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
-- `history_mg2_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 - `history_vcycle_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 
 ## データモデル
@@ -367,6 +392,7 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 - 必須: `--nx,--ny,--nz`
 - 任意: `--M,--dt,--Fo,--max-steps,--epsilon,--alpha,--bc-order,--output-dir`（`--Fo` があれば `--dt` より優先、デフォルトは requirements.md に準拠）
 - MG関連（Taylorのみ）: `--mg-level,--mg-interval,--mg-dt-scale,--mg-M,--mg-nu1,--mg-nu2,--mg-level-Ms,--mg-level-dt-scales`
+- Correction-Taylor（Taylorのみ）: `--mg-correction,--mg-corr-M,--mg-corr-dt-scale,--mg-corr-steps`
 - `mg_M` / `mg_dt_scale` のデフォルトは requirements.md に準拠（`mg_M=4`, `mg_dt_scale=2.0`）
 
 ## エラーハンドリング

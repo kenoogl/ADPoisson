@@ -137,15 +137,17 @@
 
 ## Phase 5: マルチグリッド的加速（検討）
 > Phase 3 完了後に開始
-- [x] 16. レベル1（疑似MG）の実装 (`src/mg.jl`)
-  - 残差 $r=f-Lu$ を用いた補正ステップを実装
+- [ ] 16. レベル1（疑似MG）の実装 (`src/mg.jl`)（不採用）
+  - 残差 $r=Lu-f$ を用いた補正ステップを実装
   - 補正ステップも Fo クリップを適用
+  - 実験済みで不採用のため実装対象外
   - depends: [5a, 6, 8]
   - _Requirements: 加速（マルチグリッド的アプローチ）_
   - _Design: マルチグリッド的加速_
-- [x] 17. レベル2（2-level MG）の実装 (`src/mg.jl`)
+- [ ] 17. レベル2（2-level MG）の実装 (`src/mg.jl`)（不採用）
   - coarse grid の生成（$N/2$）と $R/P$ の実装
   - coarse 境界値は boundary function から直接評価
+  - 実験済みで不採用のため実装対象外
   - depends: [16]
   - _Requirements: 加速（マルチグリッド的アプローチ）_
   - _Design: マルチグリッド的加速_
@@ -153,7 +155,7 @@
   - 再帰 V-cycle（最粗格子で直接解法）
   - 誤差方程式 $Le=r$ を解く場合は coarse でゼロ Dirichlet 境界を適用
   - レベル依存で $\Delta t$ / $M$ を変更可能
-  - depends: [17]
+  - depends: [5a, 6, 8]
   - _Requirements: 加速（マルチグリッド的アプローチ）_
   - _Design: マルチグリッド的加速_
 - [x] 19. 階層 Taylor パラメータ指定の追加
@@ -164,9 +166,29 @@
   - depends: [18]
   - _Requirements: 階層 Taylor（Level-dependent Taylor）_
   - _Design: 階層 Taylor（Level-dependent Taylor）_
-- [x] 20. Phase 5 テスト (`test/mg.jl`)
+- [ ] 20. Phase 5 テスト (`test/mg.jl`)（不採用）
   - レベル1: 補正後に残差が減少することを確認
   - レベル2: 2-level MG で収束を確認
-  - depends: [16, 17, 18, 19]
+  - 実験済みで不採用のため実施対象外
+  - depends: [18, 19]
   - _Requirements: 加速（マルチグリッド的アプローチ）_
+  - _Design: テスト戦略_
+- [ ] 21. Correction-Taylor モード追加 (`src/mg.jl`)
+  - `vcycle!` に `correction_mode=:classic/:correction-taylor` を追加
+  - `correction-taylor` 時は coarse で $L e = -r$（$r=Lu-f$）を Taylor 擬似時間積分で解く
+  - coarse 補正ではゼロ Dirichlet 境界を適用
+  - depends: [18]
+  - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
+  - _Design: 補正方程式の Taylor 化（Correction-Taylor）_
+- [ ] 22. CLI/設定追加 (`scripts/main.jl`)
+  - `--mg-correction`, `--mg-corr-M`, `--mg-corr-dt-scale`, `--mg-corr-steps` を追加
+  - `run_config.toml` へ `mg_correction`, `mg_corr_M`, `mg_corr_dt_scale`, `mg_corr_steps` を保存
+  - depends: [21]
+  - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
+  - _Design: 補正方程式の Taylor 化（Correction-Taylor）_
+- [ ] 23. Correction-Taylor テスト (`test/mg.jl`)
+  - `classic` 比較で coarse 補正後に残差低減することを確認
+  - 境界条件（ゼロ Dirichlet）適用時に NaN/発散しないことを確認
+  - depends: [21, 22]
+  - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
   - _Design: テスト戦略_
