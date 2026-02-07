@@ -189,13 +189,13 @@
   - depends: [21]
   - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
   - _Design: 補正方程式の Taylor 化（Correction-Taylor）_
-- [ ] 23. Correction-Taylor テスト (`test/mg.jl`)
+- [x] 23. Correction-Taylor テスト (`test/mg.jl`)
   - `classic` 比較で coarse 補正後に残差低減することを確認
   - 境界条件（ゼロ Dirichlet）適用時に NaN/発散しないことを確認
   - depends: [21, 22]
   - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
   - _Design: テスト戦略_
-- [ ] 24. MGワークスペース導入（バッファ再利用） (`src/mg.jl`)
+- [x] 24. MGワークスペース導入（バッファ再利用） (`src/mg.jl`)
   - V-cycle 内の `zeros/similar` を排除し、レベルごとに `r/rhs/e/tmp/taylor` を事前確保
   - `MGLevelWorkspace` / `MGWorkspace` を定義し `vcycle!` に渡す
   - coarse RHS は `levels[level+1].rhs` を再利用し、補間結果は `levels[level].e` に保持
