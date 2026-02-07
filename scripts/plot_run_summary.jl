@@ -38,6 +38,24 @@ function collect_rows(input_dir::String)
     if !isdir(input_dir)
         error("input directory not found: $(input_dir)")
     end
+    cfg_path = joinpath(input_dir, "run_config.toml")
+    sum_path = joinpath(input_dir, "run_summary.toml")
+    if isfile(cfg_path) && isfile(sum_path)
+        cfg = TOML.parsefile(cfg_path)
+        sum = TOML.parsefile(sum_path)
+        steps = safe_get(sum, "steps", nothing)
+        row = Dict{String,Any}()
+        row["dir"] = basename(input_dir)
+        row["solver"] = safe_get(cfg, "solver", "unknown")
+        row["precond"] = safe_get(cfg, "cg_precond", "none")
+        row["nx"] = safe_get(cfg, "nx", 0)
+        row["err_l2"] = safe_get(sum, "err_l2", NaN)
+        row["res_l2"] = safe_get(sum, "res_l2", NaN)
+        row["runtime_s"] = safe_get(sum, "runtime_s", NaN)
+        row["steps"] = steps
+        push!(rows, row)
+        return rows
+    end
     for entry in sort(readdir(input_dir))
         run_dir = joinpath(input_dir, entry)
         if !isdir(run_dir)
@@ -89,7 +107,10 @@ function make_labels(rows)
             solver_sym = r["solver"] == "taylor" ? "T" :
                          r["solver"] == "sor" ? "SOR" :
                          r["solver"] == "ssor" ? "SGS" :
-                         r["solver"] == "cg" ? "CG" : "?"
+                         r["solver"] == "cg" ? "CG" :
+                         r["solver"] == "mg-uniform-taylor" ? "MGU" :
+                         r["solver"] == "mg-hierarchical-taylor" ? "MGH" :
+                         r["solver"] == "mg-correction-taylor" ? "MGC" : "?"
             precond_sym = r["precond"] == "ssor" ? "SGS" :
                           r["precond"] == "none" ? "" : "?"
             if precond_sym == ""

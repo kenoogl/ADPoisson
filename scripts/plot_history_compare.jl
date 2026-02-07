@@ -53,7 +53,10 @@ function label_from_config(run_dir::String)
     solver_sym = solver == "taylor" ? "T" :
                  solver == "sor" ? "SOR" :
                  solver == "ssor" ? "SGS" :
-                 solver == "cg" ? "CG" : "?"
+                 solver == "cg" ? "CG" :
+                 solver == "mg-uniform-taylor" ? "MGU" :
+                 solver == "mg-hierarchical-taylor" ? "MGH" :
+                 solver == "mg-correction-taylor" ? "MGC" : "?"
     precond_sym = precond == "ssor" ? "SGS" :
                   precond == "none" ? "" : "?"
     if precond_sym == ""
