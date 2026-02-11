@@ -10,7 +10,7 @@ function cg_solve_with_runtime(prob::ProblemSpec, config::SolverConfig;
                                output_dir::AbstractString="results", bc_order=:spec)
     sol = initialize_solution(config, prob)
     bc = boundary_from_prob(prob)
-    f = zeros(eltype(sol.u), config.nx + 2, config.ny + 2, config.nz + 2)
+    f = zeros(eltype(sol.u), size(sol.u))
     compute_source!(f, prob, config)
     omega_t = convert(eltype(sol.u), omega_ssor)
     _, sol_out, runtime = cg_solve_with_runtime!(sol, f, bc, prob, config;
@@ -142,7 +142,8 @@ function apply_A!(q::Array{T,3}, p::Array{T,3}, bc0::BoundaryConditions,
                   config::SolverConfig, prob::ProblemSpec) where {T<:Real}
     apply_bc!(p, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
     laplacian!(q, p, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(q, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
         q[i, j, k] = -q[i, j, k]
     end
 end
@@ -182,54 +183,65 @@ end
 function sor_sweep_color_rhs_forward!(u::Array{T,3}, r::Array{T,3}, config::SolverConfig,
                                       inv_dx2::T, inv_dy2::T, inv_dz2::T, diag::T,
                                       omega::T, color::Int) where {T<:Real}
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in (2 + ((color - ((j + k) & 1)) & 1)):2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(u, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi
+        i_start = i_lo + ((color - ((i_lo + j + k) & 1)) & 1)
+        for i in i_start:2:i_hi
         rhs = -r[i, j, k]
         sum_nb = (u[i+1, j, k] + u[i-1, j, k]) * inv_dx2 +
                  (u[i, j+1, k] + u[i, j-1, k]) * inv_dy2 +
                  (u[i, j, k+1] + u[i, j, k-1]) * inv_dz2
         u_star = (sum_nb - rhs) / diag
         u[i, j, k] = (one(T) - omega) * u[i, j, k] + omega * u_star
+        end
     end
 end
 
 function sor_sweep_color_rhs_backward!(u::Array{T,3}, r::Array{T,3}, config::SolverConfig,
                                        inv_dx2::T, inv_dy2::T, inv_dz2::T, diag::T,
                                        omega::T, color::Int) where {T<:Real}
-    @inbounds for k in (config.nz+1):-1:2, j in (config.ny+1):-1:2,
-        i in (2 + ((color - ((j + k) & 1)) & 1) + 2 * ((config.nx + 1 - (2 + ((color - ((j + k) & 1)) & 1))) ÷ 2)):-2:2
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(u, config)
+    @inbounds for k in k_hi:-1:k_lo, j in j_hi:-1:j_lo
+        i_start = i_hi - ((i_hi + j + k - color) & 1)
+        for i in i_start:-2:i_lo
         rhs = -r[i, j, k]
         sum_nb = (u[i+1, j, k] + u[i-1, j, k]) * inv_dx2 +
                  (u[i, j+1, k] + u[i, j-1, k]) * inv_dy2 +
                  (u[i, j, k+1] + u[i, j, k-1]) * inv_dz2
         u_star = (sum_nb - rhs) / diag
         u[i, j, k] = (one(T) - omega) * u[i, j, k] + omega * u_star
+        end
     end
 end
 
 function dot_interior(a::Array{T,3}, b::Array{T,3}, config::SolverConfig) where {T<:Real}
     s = zero(T)
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(a, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
         s += a[i, j, k] * b[i, j, k]
     end
     return s
 end
 
 function copy_interior!(dest::Array{T,3}, src::Array{T,3}, config::SolverConfig) where {T<:Real}
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(dest, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
         dest[i, j, k] = src[i, j, k]
     end
     return dest
 end
 
 function update_p!(p::Array{T,3}, z::Array{T,3}, beta::T, config::SolverConfig) where {T<:Real}
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(p, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
         p[i, j, k] = z[i, j, k] + beta * p[i, j, k]
     end
     return p
 end
 
 function axpy_interior!(x::Array{T,3}, y::Array{T,3}, a::T, config::SolverConfig) where {T<:Real}
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(x, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
         x[i, j, k] += a * y[i, j, k]
     end
     return x

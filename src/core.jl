@@ -12,6 +12,24 @@ function grid_spacing(config::SolverConfig; Lx=1, Ly=1, Lz=1)
     return dx, dy, dz
 end
 
+@inline function ghost_layers(a::Array{T,3}, config::SolverConfig) where {T}
+    gx = (size(a, 1) - config.nx) ÷ 2
+    gy = (size(a, 2) - config.ny) ÷ 2
+    gz = (size(a, 3) - config.nz) ÷ 2
+    if gx < 1 || gy < 1 || gz < 1 ||
+       size(a, 1) != config.nx + 2 * gx ||
+       size(a, 2) != config.ny + 2 * gy ||
+       size(a, 3) != config.nz + 2 * gz
+        error("array size does not match config with ghost layers")
+    end
+    return gx, gy, gz
+end
+
+@inline function interior_bounds(a::Array{T,3}, config::SolverConfig) where {T}
+    gx, gy, gz = ghost_layers(a, config)
+    return gx + 1, gx + config.nx, gy + 1, gy + config.ny, gz + 1, gz + config.nz
+end
+
 """
     make_grid(config; Lx=1, Ly=1, Lz=1)
 
@@ -43,7 +61,8 @@ Create grid and zero initial condition with ghost cells.
 function initialize_solution(config::SolverConfig, prob::ProblemSpec)
     x, y, z = make_grid(config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     T = promote_type(typeof(prob.Lx), typeof(prob.alpha), typeof(config.dt))
-    u = zeros(T, config.nx + 2, config.ny + 2, config.nz + 2)
+    ghost = 2
+    u = zeros(T, config.nx + 2 * ghost, config.ny + 2 * ghost, config.nz + 2 * ghost)
     return Solution(x, y, z, u, zero(T), 0)
 end
 
@@ -124,11 +143,13 @@ function taylor_step!(next::Array{T,3}, curr::Array{T,3}, f::Array{T,3}, m::Int,
                       lap_order::Symbol=:second) where {T}
     laplacian!(next, curr, config; Lx=Lx, Ly=Ly, Lz=Lz, order=lap_order)
     if m == 0
-        @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(next, config)
+        @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
             next[i, j, k] = (next[i, j, k] - f[i, j, k]) / (m + 1)
         end
     else
-        @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(next, config)
+        @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
             next[i, j, k] = next[i, j, k] / (m + 1)
         end
     end
@@ -142,7 +163,8 @@ Accumulate Taylor series sum: acc += coeff * dt_pow (interior only).
 """
 function accumulate_taylor!(acc::Array{T,3}, coeff::Array{T,3}, dt_pow::T,
                             config::SolverConfig) where {T}
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(acc, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
         acc[i, j, k] += coeff[i, j, k] * dt_pow
     end
     return acc
@@ -155,11 +177,12 @@ Horner evaluation for full coefficient storage (verification use).
 """
 function horner_update!(u_new::Array{T,3}, coeffs::TaylorArrays3D{T}, dt::T, M::Int,
                         config::SolverConfig) where {T}
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(u_new, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
         u_new[i, j, k] = coeffs.U[i, j, k, M + 1]
     end
     for m in M-1:-1:0
-        @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+        @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
             u_new[i, j, k] = u_new[i, j, k] * dt + coeffs.U[i, j, k, m + 1]
         end
     end
@@ -245,10 +268,14 @@ Fill source term on interior points.
 """
 function compute_source!(f::Array{T,3}, prob::ProblemSpec, config::SolverConfig) where {T}
     dx, dy, dz = grid_spacing(config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
-        z = (k - 1.5) * dz
-        y = (j - 1.5) * dy
-        x = (i - 1.5) * dx
+    gx, gy, gz = ghost_layers(f, config)
+    coord_offset_x = gx + 0.5
+    coord_offset_y = gy + 0.5
+    coord_offset_z = gz + 0.5
+    @inbounds for k in gz+1:gz+config.nz, j in gy+1:gy+config.ny, i in gx+1:gx+config.nx
+        z = (k - coord_offset_z) * dz
+        y = (j - coord_offset_y) * dy
+        x = (i - coord_offset_x) * dx
         f[i, j, k] = prob.source(x, y, z)
     end
     return f
@@ -300,7 +327,8 @@ Compute L2 norm over interior points.
 """
 function l2_norm_interior(a::Array{T,3}, config::SolverConfig) where {T}
     s = zero(T)
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(a, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
         s += a[i, j, k]^2
     end
     return sqrt(s)
@@ -316,9 +344,12 @@ function l2_error_exact(sol::Solution, prob::ProblemSpec, config::SolverConfig)
     dy = prob.Ly / config.ny
     dz = prob.Lz / config.nz
     s = 0.0
+    gx = (size(sol.u, 1) - config.nx) ÷ 2
+    gy = (size(sol.u, 2) - config.ny) ÷ 2
+    gz = (size(sol.u, 3) - config.nz) ÷ 2
     @inbounds for k in 1:config.nz, j in 1:config.ny, i in 1:config.nx
         uex = exact_solution(sol.x[i], sol.y[j], sol.z[k], prob.alpha)
-        u = sol.u[i + 1, j + 1, k + 1]
+        u = sol.u[i + gx, j + gy, k + gz]
         s += (u - uex)^2
     end
     return sqrt(s * dx * dy * dz)
@@ -348,8 +379,11 @@ function l2_error_exact_precomputed(u::Array{T,3}, uex::Array{T,3},
     dy = prob.Ly / config.ny
     dz = prob.Lz / config.nz
     s = zero(T)
+    gx = (size(u, 1) - config.nx) ÷ 2
+    gy = (size(u, 2) - config.ny) ÷ 2
+    gz = (size(u, 3) - config.nz) ÷ 2
     @inbounds for k in 1:config.nz, j in 1:config.ny, i in 1:config.nx
-        diff = u[i + 1, j + 1, k + 1] - uex[i, j, k]
+        diff = u[i + gx, j + gy, k + gz] - uex[i, j, k]
         s += diff^2
     end
     return sqrt(s * dx * dy * dz)
@@ -367,8 +401,11 @@ function error_stats_precomputed(u::Array{T,3}, uex::Array{T,3},
     dz = prob.Lz / config.nz
     s = zero(T)
     err_max = zero(T)
+    gx = (size(u, 1) - config.nx) ÷ 2
+    gy = (size(u, 2) - config.ny) ÷ 2
+    gz = (size(u, 3) - config.nz) ÷ 2
     @inbounds for k in 1:config.nz, j in 1:config.ny, i in 1:config.nx
-        diff = u[i + 1, j + 1, k + 1] - uex[i, j, k]
+        diff = u[i + gx, j + gy, k + gz] - uex[i, j, k]
         s += diff^2
         ad = abs(diff)
         if ad > err_max
@@ -394,7 +431,7 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
     sol = initialize_solution(config, prob)
     bc = boundary_from_prob(prob)
 
-    f = zeros(eltype(sol.u), config.nx + 2, config.ny + 2, config.nz + 2)
+    f = zeros(eltype(sol.u), size(sol.u))
     compute_source!(f, prob, config)
 
     buffers = TaylorBuffers3D(similar(sol.u), similar(sol.u), similar(sol.u))
@@ -425,9 +462,9 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
     end
     if mg_vcycle && mg_interval > 0
         if mg_workspace !== nothing &&
-           size(mg_workspace.levels[1].r, 1) == config.nx + 2 &&
-           size(mg_workspace.levels[1].r, 2) == config.ny + 2 &&
-           size(mg_workspace.levels[1].r, 3) == config.nz + 2
+           size(mg_workspace.levels[1].r, 1) == size(sol.u, 1) &&
+           size(mg_workspace.levels[1].r, 2) == size(sol.u, 2) &&
+           size(mg_workspace.levels[1].r, 3) == size(sol.u, 3)
             mg_ws = mg_workspace
         else
             mg_ws = build_mg_workspace(sol.u, config)

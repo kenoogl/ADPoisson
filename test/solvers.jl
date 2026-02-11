@@ -7,7 +7,7 @@ using ADPoisson
     bc = ADPoisson.boundary_from_prob(prob)
 
     u0 = ADPoisson.initialize_solution(config, prob).u
-    f = zeros(eltype(u0), config.nx + 2, config.ny + 2, config.nz + 2)
+    f = zeros(eltype(u0), size(u0))
     ADPoisson.compute_source!(f, prob, config)
 
     # SOR

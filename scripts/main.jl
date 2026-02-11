@@ -313,9 +313,6 @@ function main()
         @warn "lap-order is only valid for taylor; forcing to second for iterative solvers" solver=solver lap_order=lap_order
         lap_order = :second
     end
-    if solver === :taylor && lap_order === :fourth
-        error("--lap-order fourth requires ghost 2-layer runtime arrays. Apply Phase 6 (Task 25-27) first.")
-    end
     println("run config:")
     @printf("  nx=%d ny=%d nz=%d M=%d\n", config.nx, config.ny, config.nz, config.M)
     @printf("  dt=%.3e max_steps=%d epsilon=%.3e\n", config.dt, config.max_steps, config.epsilon)

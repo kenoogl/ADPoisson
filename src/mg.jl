@@ -13,20 +13,31 @@ function taylor_smoother!(u::Array{T,3}, buffers::TaylorBuffers3D{T}, r::Array{T
 end
 
 function zero_ghost!(a::Array{T,3}, config::SolverConfig) where {T<:Real}
-    nx = config.nx
-    ny = config.ny
-    nz = config.nz
-    @inbounds for k in 1:nz+2, j in 1:ny+2
-        a[1, j, k] = zero(T)
-        a[nx+2, j, k] = zero(T)
+    gx, gy, gz = ghost_layers(a, config)
+    i_lo = gx + 1
+    i_hi = gx + config.nx
+    j_lo = gy + 1
+    j_hi = gy + config.ny
+    k_lo = gz + 1
+    k_hi = gz + config.nz
+    nx_tot, ny_tot, nz_tot = size(a)
+    @inbounds for k in 1:nz_tot, j in 1:ny_tot
+        for d in 1:gx
+            a[i_lo - d, j, k] = zero(T)
+            a[i_hi + d, j, k] = zero(T)
+        end
     end
-    @inbounds for k in 1:nz+2, i in 1:nx+2
-        a[i, 1, k] = zero(T)
-        a[i, ny+2, k] = zero(T)
+    @inbounds for k in 1:nz_tot, i in 1:nx_tot
+        for d in 1:gy
+            a[i, j_lo - d, k] = zero(T)
+            a[i, j_hi + d, k] = zero(T)
+        end
     end
-    @inbounds for j in 1:ny+2, i in 1:nx+2
-        a[i, j, 1] = zero(T)
-        a[i, j, nz+2] = zero(T)
+    @inbounds for j in 1:ny_tot, i in 1:nx_tot
+        for d in 1:gz
+            a[i, j, k_lo - d] = zero(T)
+            a[i, j, k_hi + d] = zero(T)
+        end
     end
     return a
 end
@@ -40,13 +51,19 @@ Assumes rc and rf include ghost cells.
 function restrict_full_weighting!(rc::Array{T,3}, rf::Array{T,3},
                                   cfg_f::SolverConfig, cfg_c::SolverConfig) where {T<:Real}
     w = (convert(T, 1 / 8), convert(T, 3 / 8), convert(T, 3 / 8), convert(T, 1 / 8))
+    gxf = (size(rf, 1) - cfg_f.nx) ÷ 2
+    gyf = (size(rf, 2) - cfg_f.ny) ÷ 2
+    gzf = (size(rf, 3) - cfg_f.nz) ÷ 2
+    gxc = (size(rc, 1) - cfg_c.nx) ÷ 2
+    gyc = (size(rc, 2) - cfg_c.ny) ÷ 2
+    gzc = (size(rc, 3) - cfg_c.nz) ÷ 2
     @inbounds for K in 1:cfg_c.nz, J in 1:cfg_c.ny, I in 1:cfg_c.nx
-        ic = I + 1
-        jc = J + 1
-        kc = K + 1
-        ifi = 2 * I
-        jfi = 2 * J
-        kfi = 2 * K
+        ic = gxc + I
+        jc = gyc + J
+        kc = gzc + K
+        ifi = gxf + 2 * I - 1
+        jfi = gyf + 2 * J - 1
+        kfi = gzf + 2 * K - 1
         acc = zero(T)
         for dk in -1:2, dj in -1:2, di in -1:2
             acc += w[di + 2] * w[dj + 2] * w[dk + 2] * rf[ifi + di, jfi + dj, kfi + dk]
@@ -64,6 +81,12 @@ Assumes arrays include ghost cells.
 """
 function prolong_trilinear!(ef::Array{T,3}, ec::Array{T,3},
                             cfg_f::SolverConfig, cfg_c::SolverConfig) where {T<:Real}
+    gxf = (size(ef, 1) - cfg_f.nx) ÷ 2
+    gyf = (size(ef, 2) - cfg_f.ny) ÷ 2
+    gzf = (size(ef, 3) - cfg_f.nz) ÷ 2
+    gxc = (size(ec, 1) - cfg_c.nx) ÷ 2
+    gyc = (size(ec, 2) - cfg_c.ny) ÷ 2
+    gzc = (size(ec, 3) - cfg_c.nz) ÷ 2
     @inbounds for kf in 1:cfg_f.nz, jf in 1:cfg_f.ny, ifine in 1:cfg_f.nx
         x = (ifine + 0.5) / 2
         y = (jf + 0.5) / 2
@@ -78,14 +101,14 @@ function prolong_trilinear!(ef::Array{T,3}, ec::Array{T,3},
         ty = y - J0
         tz = z - K0
 
-        v000 = ec[I0 + 1, J0 + 1, K0 + 1]
-        v100 = ec[I1 + 1, J0 + 1, K0 + 1]
-        v010 = ec[I0 + 1, J1 + 1, K0 + 1]
-        v110 = ec[I1 + 1, J1 + 1, K0 + 1]
-        v001 = ec[I0 + 1, J0 + 1, K1 + 1]
-        v101 = ec[I1 + 1, J0 + 1, K1 + 1]
-        v011 = ec[I0 + 1, J1 + 1, K1 + 1]
-        v111 = ec[I1 + 1, J1 + 1, K1 + 1]
+        v000 = ec[I0 + gxc, J0 + gyc, K0 + gzc]
+        v100 = ec[I1 + gxc, J0 + gyc, K0 + gzc]
+        v010 = ec[I0 + gxc, J1 + gyc, K0 + gzc]
+        v110 = ec[I1 + gxc, J1 + gyc, K0 + gzc]
+        v001 = ec[I0 + gxc, J0 + gyc, K1 + gzc]
+        v101 = ec[I1 + gxc, J0 + gyc, K1 + gzc]
+        v011 = ec[I0 + gxc, J1 + gyc, K1 + gzc]
+        v111 = ec[I1 + gxc, J1 + gyc, K1 + gzc]
 
         v00 = v000 * (1 - tx) + v100 * tx
         v10 = v010 * (1 - tx) + v110 * tx
@@ -93,7 +116,7 @@ function prolong_trilinear!(ef::Array{T,3}, ec::Array{T,3},
         v11 = v011 * (1 - tx) + v111 * tx
         v0 = v00 * (1 - ty) + v10 * ty
         v1 = v01 * (1 - ty) + v11 * ty
-        ef[ifine + 1, jf + 1, kf + 1] = v0 * (1 - tz) + v1 * tz
+        ef[ifine + gxf, jf + gyf, kf + gzf] = v0 * (1 - tz) + v1 * tz
     end
     return ef
 end
@@ -136,14 +159,14 @@ mutable struct MGWorkspace{T,BC}
     coarse_dims::NTuple{3,Int}
 end
 
-function mg_level_workspace(::Type{T}, nx::Int, ny::Int, nz::Int) where {T<:Real}
-    r = Array{T}(undef, nx + 2, ny + 2, nz + 2)
-    rhs = Array{T}(undef, nx + 2, ny + 2, nz + 2)
-    e = Array{T}(undef, nx + 2, ny + 2, nz + 2)
-    tmp = Array{T}(undef, nx + 2, ny + 2, nz + 2)
-    taylor = TaylorBuffers3D(Array{T}(undef, nx + 2, ny + 2, nz + 2),
-                             Array{T}(undef, nx + 2, ny + 2, nz + 2),
-                             Array{T}(undef, nx + 2, ny + 2, nz + 2))
+function mg_level_workspace(::Type{T}, nx::Int, ny::Int, nz::Int, ghost::Int) where {T<:Real}
+    r = Array{T}(undef, nx + 2 * ghost, ny + 2 * ghost, nz + 2 * ghost)
+    rhs = Array{T}(undef, nx + 2 * ghost, ny + 2 * ghost, nz + 2 * ghost)
+    e = Array{T}(undef, nx + 2 * ghost, ny + 2 * ghost, nz + 2 * ghost)
+    tmp = Array{T}(undef, nx + 2 * ghost, ny + 2 * ghost, nz + 2 * ghost)
+    taylor = TaylorBuffers3D(Array{T}(undef, nx + 2 * ghost, ny + 2 * ghost, nz + 2 * ghost),
+                             Array{T}(undef, nx + 2 * ghost, ny + 2 * ghost, nz + 2 * ghost),
+                             Array{T}(undef, nx + 2 * ghost, ny + 2 * ghost, nz + 2 * ghost))
     return MGLevelWorkspace{T}(r, rhs, e, taylor, tmp)
 end
 
@@ -153,8 +176,9 @@ function build_mg_workspace(u::Array{T,3}, config::SolverConfig; min_n::Int=4) w
     nx = config.nx
     ny = config.ny
     nz = config.nz
+    ghost = (size(u, 1) - config.nx) ÷ 2
     for level in 1:levels
-        work_levels[level] = mg_level_workspace(T, nx, ny, nz)
+        work_levels[level] = mg_level_workspace(T, nx, ny, nz, ghost)
         if level < levels
             nx = nx ÷ 2
             ny = ny ÷ 2
@@ -187,7 +211,8 @@ function mg_dt_clipped(config::SolverConfig, prob::ProblemSpec, dt_scale::T) whe
 end
 
 function zero_interior!(a::Array{T,3}, config::SolverConfig) where {T<:Real}
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(a, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
         a[i, j, k] = zero(T)
     end
     return a
@@ -361,7 +386,8 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
     else
         compute_residual!(r, u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
     end
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(r, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
         r[i, j, k] = -r[i, j, k]
     end
     zero_ghost!(r, config)
@@ -388,7 +414,8 @@ function vcycle!(u::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
 
     ef = ws_level.tmp
     prolong_trilinear!(ef, ec, config, cfg_c_base)
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(u, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
         u[i, j, k] += ef[i, j, k]
     end
     apply_bc!(u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order_level)

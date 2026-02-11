@@ -18,6 +18,9 @@ function plot_slice(sol::Solution, prob::ProblemSpec, config::SolverConfig;
         y_target = 0.5 * prob.Ly
         y_index = argmin(abs.(sol.y .- y_target))
     end
+    gx = (size(sol.u, 1) - nx) ÷ 2
+    gy = (size(sol.u, 2) - ny) ÷ 2
+    gz = (size(sol.u, 3) - nz) ÷ 2
 
     Uex = Array{eltype(sol.u)}(undef, nx, nz)
     Uerr = Array{eltype(sol.u)}(undef, nx, nz)
@@ -25,7 +28,7 @@ function plot_slice(sol::Solution, prob::ProblemSpec, config::SolverConfig;
         z = sol.z[k]
         for i in 1:nx
             x = sol.x[i]
-            u_num = sol.u[i + 1, y_index + 1, k + 1]
+            u_num = sol.u[i + gx, y_index + gy, k + gz]
             u_ex = exact_solution(x, sol.y[y_index], z, prob.alpha)
             Uex[i, k] = u_ex
             Uerr[i, k] = abs(u_num - u_ex)

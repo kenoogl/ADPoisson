@@ -217,7 +217,7 @@
   - depends: [6]
   - _Requirements: Taylor級数漸化式（ghost 2層境界式）_
   - _Design: Ghost Cell更新 (`boundary.jl`)_
-- [ ] 26. コア配列・インデクスの ghost 2層対応 (`src/core.jl`, `src/mg.jl`, `src/cg.jl`)
+- [x] 26. コア配列・インデクスの ghost 2層対応 (`src/core.jl`, `src/mg.jl`, `src/cg.jl`)
   - 配列サイズを `(nx+4, ny+4, nz+4)` に更新
   - 内点ループを `3:n+2` へ更新（残差, Taylor 係数, 補間/制限を含む）
   - ghost を含む添字規約の整合を全ソルバーで確認
@@ -225,7 +225,7 @@
   - depends: [25]
   - _Requirements: 計算格子, Taylor級数漸化式_
   - _Design: データモデル, コアアルゴリズム_
-- [ ] 27. ghost 2層向けテスト更新 (`test/core.jl`, `test/mg.jl`)
+- [x] 27. ghost 2層向けテスト更新 (`test/core.jl`, `test/mg.jl`)
   - 境界適用テストを ghost 2層式に更新
   - `order=:high` の `m=0`/`m>=1` の両方を検証
   - 既存収束テストが新添字規約で通ることを確認
