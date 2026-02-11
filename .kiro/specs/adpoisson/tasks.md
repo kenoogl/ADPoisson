@@ -174,7 +174,7 @@
   - depends: [18, 19]
   - _Requirements: 加速（マルチグリッド的アプローチ）_
   - _Design: テスト戦略_
-- [ ] 21. Correction-Taylor モード追加 (`src/mg.jl`)
+- [x] 21. Correction-Taylor モード追加 (`src/mg.jl`)
   - `vcycle!` に `correction_mode=:classic/:correction-taylor` を追加
   - `correction-taylor` 時は coarse で $L e = -r$（$r=Lu-f$）を Taylor 擬似時間積分で解く
   - coarse へは $-r$（$f-Lu$）を制限した右辺を用いる
@@ -182,7 +182,7 @@
   - depends: [18]
   - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
   - _Design: 補正方程式の Taylor 化（Correction-Taylor）_
-- [ ] 22. CLI/設定追加 (`scripts/main.jl`)
+- [x] 22. CLI/設定追加 (`scripts/main.jl`)
   - `--solver mg-correction-taylor` と `--mg-corr-M`, `--mg-corr-dt-scale`, `--mg-corr-steps` を追加
   - **補正方程式（e）側**の pre/post 個別指定として `--mg-corr-nu1`, `--mg-corr-nu2` を追加
   - `run_config.toml` へ `mg_correction`, `mg_corr_M`, `mg_corr_dt_scale`, `mg_corr_steps`,
@@ -190,7 +190,7 @@
   - depends: [21]
   - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
   - _Design: 補正方程式の Taylor 化（Correction-Taylor）_
-- [ ] 23. Correction-Taylor テスト (`test/mg.jl`)
+- [x] 23. Correction-Taylor テスト (`test/mg.jl`)
   - `classic` 比較で coarse 補正後に残差低減することを確認
   - 境界条件（ゼロ Dirichlet）適用時に NaN/発散しないことを確認
   - depends: [21, 22]
@@ -209,7 +209,7 @@
 
 ## Phase 6: ghost 2層仕様への移行
 > 仕様更新（ghost 2層, 高次境界4次）を現実装へ反映するフェーズ
-- [ ] 25. 境界条件の ghost 2層化 (`src/boundary.jl`)
+- [x] 25. 境界条件の ghost 2層化 (`src/boundary.jl`)
   - `order=:spec` で ghost1/ghost2 の 2次式（`2g-u_adj1`, `2g-u_adj2`）を実装
   - `order=:high` で ghost 2層の 4次式を実装（x/y/z 全面）
   - 係数配列は `m=0` に境界値、`m>=1` は同次式を適用
