@@ -1,4 +1,4 @@
-# ADPoisson (Auto Differential Poisson)
+# ADPoisson (Auto Differential Poisson) Project
 
 ## 本プロジェクトの論点
 
@@ -44,6 +44,7 @@ $$
 - Neumann：**（外向き法線微分）2次精度**（＋参考として4次も付記）
 
 を、導出→そのまま実装できる形でまとめます。
+（注: 現行の必須実装対象は Dirichlet。Neumann は参照仕様。）
 
 ------
 
@@ -78,7 +79,7 @@ $$
 \frac{u_{i,j,k+1}-2u_{i,j,k}+u_{i,j,k-1}}{\Delta z^2}
 $$
 
-#### (B) 4次精度（各方向5点, radius=2：クロス項なし 19点）
+#### (B) 4次精度（各方向5点, radius=2：クロス項なし 13点）
 
 必要なら（ghost2 があるので可能）：
 $$
@@ -278,9 +279,10 @@ x-max 面（右側）も同じ係数で、添字を内側に向けて反転さ�
 
 ------
 
-### 3.3 Neumann（外向き法線微分 $\partial u/\partial n=h$）
+### 3.3 Neumann（外向き法線微分 $\partial u/\partial n=h$、参照仕様）
 
 ここでは **$h$ を“外向き法線微分”として与える**（符号はデータ側に吸収）とします。
+本節は参照仕様であり、現行の必須実装対象外です。
 
 #### 2次精度（ghost2層の埋め方）
 
@@ -472,7 +474,7 @@ Taylor:
 
 - fine: M_f, dt_f
 - coarse: M_c, dt_c
-- dt_c = dt_f * 4（格子幅2倍なら安定条件は4倍まで許容）
+- dt_c = dt_f * s_c（$s_c$ は `mg_level_dt_scales` で指定）
 
 **MG の効果が Taylor の系列近似自体に埋め込まれる**ため、
 V-cycle の補正が「Taylor の階層化」と一致します。
@@ -481,11 +483,11 @@ V-cycle の補正が「Taylor の階層化」と一致します。
 
 ### 2. 補正方程式の Taylor 化（Correction-Taylor）
 
-通常 MG は L e = r を解くが、
+通常 MG は（残差を $r=Lu-f$ と定義して）$L e = -r$ を解くが、
 これを Taylor で **疑似時間の補正方程式として直接解く**。
 
 ```
-e_t = L e - r 
+e_t = L e + r
 ```
 
 を各レベルで Taylor 展開して **補正量 e を直接更新**。
@@ -499,7 +501,7 @@ e_t = L e - r
 Taylor 展開に **coarse grid の逆作用を事前に混ぜる**：
 
 ```
-u_{new} = u + P (L_c^{-1}) R (f - L u) + Taylor_smoother(...) 
+u_{new} = u + P (L_c^{-1}) R (-r) + Taylor_smoother(...), \quad r = Lu - f
 ```
 
 つまり Taylor 更新式の中に **粗格子補正項を組み込む**。
@@ -528,17 +530,24 @@ $$
 
 - 格子幅：$h_\ell = h_1\cdot 2^{\ell-1}$
 
-- 安定条件（陽的拡散）に合わせて
+- レベル依存スケールを用いて
   $$
-  \Delta t_\ell = \Delta t_1 \cdot 4^{\ell-1}
+  \Delta t_\ell = \Delta t \cdot s_\ell
   $$
-  （= あなたの「dt_c = dt_f * 4」を一般化）
+  （$s_\ell$ は `mg_level_dt_scales` で指定。$h^2$ 則を使う場合は $s_\ell \approx 4^{\ell-1}$ を選ぶ）
 
 - Taylor 次数：例として
   $$
   M_\ell = \text{Ms}[\ell]
   $$
   （細かいほど大きく、粗いほど小さく）
+
+- CLI 指定と既定値:
+  - `mg_level_Ms` / `mg_level_dt_scales` を使う
+  - 配列長がレベル数より短い場合は **最後の値を繰り返す**
+  - `mg_level_dt_scales` 未指定時は **全レベルで `mg_dt_scale`**
+  - `mg_level_Ms` 未指定時は **全レベルで `mg_M`**
+  - 指定値は `run_config.toml` に保存する
 
 ------
 
@@ -564,7 +573,9 @@ $$
 MG の構造は普通の V-cycle ですが、違いは
 
 - 各レベルの smoother が **Taylor $M_\ell, dt_\ell$**
-- coarse solve も同じ Taylor（または direct）
+- 最粗格子/補正の扱いを **solver mode で分岐**する
+  - `mg-uniform-taylor` / `mg-hierarchical-taylor`: 最粗格子は direct（`A \\ b`）
+  - `mg-correction-taylor`: coarse 補正（最粗含む）を correction-taylor で解く
 
 という点です。
 
@@ -596,32 +607,32 @@ MG の構造は普通の V-cycle ですが、違いは
 
 2. **Residual**
    $$
-   r_\ell \leftarrow f_\ell - L_\ell u_\ell
+   r_\ell \leftarrow L_\ell u_\ell - f_\ell
    $$
 
 3. **Coarse-grid residual**
    $$
-   r_{\ell+1} \leftarrow R_\ell^{\ell+1}, r_\ell
+   b_{\ell+1} \leftarrow R_\ell^{\ell+1}\,(-r_\ell)
    $$
 
-4. **Coarse-grid correction problem**
+4. **Coarse-grid correction problem（solver mode 分岐）**
 
    - 初期値 $e_{\ell+1}=0$
 
-   - もし $\ell+1=L$（最粗）なら：
-     $$
-     e_L \leftarrow \mathcal{T}_L^{(\nu_c)}(e_L;\ r_L,\ \Delta t_L,\ M_L)
-     $$
+   - `mg-uniform-taylor` / `mg-hierarchical-taylor` の場合:
+     - もし $\ell+1=L$（最粗）なら direct solve（`A \\ b`）で $e_L$ を求める
+     - そうでなければ再帰で coarse 補正を求める
+   - `mg-correction-taylor` の場合:
+     - coarse 補正を correction-taylor で解く（最粗含む）
+     - 補正擬似時間方程式は
+       $$
+       e_t = L e - b \quad (\Leftrightarrow\ e_t = L e + r,\ b=-r)
+       $$
+       を用いる
 
-   - ここで **補正方程式**は
+   - （最粗以外のレベルでは）再帰で coarse 補正を継続:
      $$
-     e_t = L_L e - r_L
-     $$
-     を Taylor で回していると解釈できます（Correction-Taylor）。
-
-   - そうでなければ：
-     $$
-     e_{\ell+1}\leftarrow \text{Vcycle}(\ell+1,\ e_{\ell+1},\ r_{\ell+1})
+     e_{\ell+1}\leftarrow \text{Vcycle}(\ell+1,\ e_{\ell+1},\ b_{\ell+1})
      $$
 
 5. **Prolongation and correction**
@@ -664,7 +675,7 @@ MG の構造は普通の V-cycle ですが、違いは
   $$
   を入れるのが安全。
 
-- **coarse の BC は誤差の同次 BC**（Dirichlet→0、Neumann→0）
+- **coarse の BC は誤差の同次 BC**（Dirichlet→0）。Neumann→0 は参照仕様（現行必須実装対象外）。
 
 - **operator は各レベルで一致した離散化**（Galerkin か 幾何）
 
@@ -770,6 +781,7 @@ $$
 定義から必ず成り立つ恒等式：
 $$
 \boxed{ (u^{(\ell)})_{m+1}
+=
 
 \frac{1}{m+1}
 \left( \partial_t u^{(\ell)} \right)_m
@@ -808,6 +820,7 @@ $$
 
 $$
 \boxed{ (u^{(\ell)})_{m+1}
+=
 
 \frac{1}{m+1} \Bigl( L_\ell (u^{(\ell)}_m)
 
@@ -840,6 +853,7 @@ $$
 
 $$
 \boxed{ (u^{(\ell)})_{m+1}
+=
 
 \frac{1}{m+1}\,
 L_\ell (u^{(\ell)}_m)
@@ -863,6 +877,7 @@ $$
 各レベル $\ell$ における **1 Taylor step**：
 $$
 \boxed{ u^{(\ell),\,new}
+=
 \sum_{m=0}^{M_\ell}
 (\Delta t_\ell)^m
 (u^{(\ell)})_m
@@ -910,7 +925,7 @@ u^{(2),new} &= u^{(2)} + \Delta t_2 u^{(2)}_1 + \cdots
 $$
 
 - $h_2 = 2h_1$
-- $\Delta t_2 \approx 4\Delta t_1$
+- $\Delta t_2 = \Delta t \cdot s_2$（$h^2$ 則の例では $s_2\approx 4$）
 - $M_2 < M_1$
 
 👉 fine で残った **低周波誤差が coarse では高周波化**し、
@@ -920,23 +935,24 @@ $$
 
 ### 7. Correction-Taylor（補正方程式）との完全一致
 
-coarse で解く補正方程式
+coarse で解く補正方程式（$r_\ell=L_\ell u_\ell-f_\ell$）
 $$
-L_\ell e_\ell = r_\ell
+L_\ell e_\ell = -r_\ell
 $$
 を擬似時間化：
 $$
 \boxed{
-\partial_t e_\ell = L_\ell e_\ell - r_\ell
+\partial_t e_\ell = L_\ell e_\ell + r_\ell
 }
 $$
-に対しても **全く同じ Taylor 漸化式**：
+に対して **同じ Taylor 漸化式**：
 $$
 \boxed{ (e^{(\ell)})_{m+1}
+=
 
 \frac{1}{m+1} \Bigl( L_\ell (e^{(\ell)}_m)
 
-(r_\ell)_m
++(r_\ell)_m
 \Bigr)
 }
 $$
@@ -979,15 +995,15 @@ $$
 
 # Correction-Taylor
 
-Correction-Taylor では、各レベル $\ell$ で **補正方程式**
+Correction-Taylor では、各レベル $\ell$ で（残差を $r_\ell=L_\ell u_\ell-f_\ell$ として）**補正方程式**
 $$
-L_\ell e_\ell = r_\ell
+L_\ell e_\ell = -r_\ell
 $$
 を、擬似時間 ODE
 $$
-\boxed{ \partial_t e_\ell = L_\ell e_\ell - r_\ell }
+\boxed{ \partial_t e_\ell = L_\ell e_\ell + r_\ell }
 $$
-として解き、定常状態 $\partial_t e_\ell=0$ で $L_\ell e_\ell=r_\ell$ を満たすようにします。
+として解き、定常状態 $\partial_t e_\ell=0$ で $L_\ell e_\ell=-r_\ell$ を満たすようにします。
 
 以下、**レベル番号付き**で、**Taylor 係数の漸化式**を明示します。
 
@@ -1028,7 +1044,7 @@ $$
 
 ODE：
 $$
-\partial_t e^{(\ell)} = L_\ell e^{(\ell)} - r_\ell
+\partial_t e^{(\ell)} = L_\ell e^{(\ell)} + r_\ell
 $$
 線形性から
 $$
@@ -1038,7 +1054,7 @@ $$
 $$
 \boxed{
 (e^{(\ell)})_{m+1}
-=\frac{1}{m+1}\Bigl( L_\ell (e^{(\ell)}_m) - (r_\ell)_m \Bigr)
+=\frac{1}{m+1}\Bigl( L_\ell (e^{(\ell)}_m) + (r_\ell)_m \Bigr)
 }
 \qquad (m=0,1,2,\dots)
 $$
@@ -1061,7 +1077,7 @@ $$
 - 1次係数
   $$
   \boxed{
-  (e^{(\ell)})_1 = L_\ell (e^{(\ell)}_0) - r_\ell = -r_\ell
+  (e^{(\ell)})_1 = L_\ell (e^{(\ell)}_0) + r_\ell = r_\ell
   }
   $$
   （初期値を 0 にした場合）
@@ -1076,11 +1092,12 @@ $$
 
 ------
 
-## 5) Taylor 更新式（補正 (e_\ell) の 1 step）
+## 5) Taylor 更新式（補正 $e_\ell$ の 1 step）
 
 レベル $\ell$ の Taylor 次数 $M_\ell$、擬似時間ステップ $\Delta t_\ell$ で
 $$
 \boxed{ e_\ell^{new}
+=
 
 \sum_{m=0}^{M_\ell}
 (\Delta t_\ell)^m (e^{(\ell)})_m
@@ -1100,14 +1117,14 @@ $$
 
 $u^{*}$を真の離散解とし、誤差 $E_\ell=u^*_\ell-u_\ell$ とすると、
 $$
-r_\ell=f_\ell-L_\ell u_\ell = L_\ell(u^*_\ell-u_\ell)=L_\ell E_\ell
+r_\ell=L_\ell u_\ell-f_\ell = L_\ell(u_\ell-u^*_\ell)=-L_\ell E_\ell
 $$
-なので補正方程式 $L_\ell e_\ell=r_\ell$ は **誤差そのもの** $e_\ell=E_\ell$ を求める式です。
+なので補正方程式 $L_\ell e_\ell=-r_\ell$ は **誤差そのもの** $e_\ell=E_\ell$ を求める式です。
 従って `Correction-Taylor` は「粗格子で誤差を直接緩和する」MG の本質と一致します。
 
 ------
 
-必要なら、この漸化式を **ghost2層・Dirichlet/Neumann（誤差は同次BC）**で実装する際の注意点（特に Neumann-only のゲージ固定）も、コード断片込みで整理します。
+必要なら、この漸化式を **ghost2層・Dirichlet/Neumann（誤差は同次BC）**で実装する際の注意点（特に Neumann-only のゲージ固定）も、コード断片込みで整理します（Neumann は参照仕様）。
 
 
 
@@ -1137,7 +1154,7 @@ $$
 と置き、補正方程式
 
 $$
-L_\ell e_\ell = r_\ell,\qquad r_\ell=f_\ell-L_\ell u_\ell
+L_\ell e_\ell = -r_\ell,\qquad r_\ell=L_\ell u_\ell-f_\ell
 $$
 
 を解く。
@@ -1281,14 +1298,16 @@ $$
 
 ------
 
-### 4. Correction-Taylor 用 境界条件まとめ（実装規約）
+### 4. Correction-Taylor 用 境界条件まとめ（参照仕様）
 
 | 原問題の BC              | Correction-Taylor の BC      |
 | ------------------------ | ---------------------------- |
 | Dirichlet (u=g)          | **Dirichlet (e=0)**          |
-| Neumann (\partial_n u=h) | **Neumann (\partial_n e=0)** |
+| Neumann (\partial_n u=h) | **Neumann (\partial_n e=0)**（参照） |
 | Mixed                    | 各面で上記を適用             |
 | 全 Neumann               | 同次 Neumann + ゲージ固定    |
+
+※ 現行の必須実装対象は Dirichlet。Neumann は参照仕様。
 
 ------
 
@@ -1296,7 +1315,7 @@ $$
 
 Correction-Taylor ODE：
 $$
-e_t = L e - r
+e_t = L e + r
 $$
 
 - 境界条件は **各 Taylor 係数 (e_m) に同じ同次 BC**
@@ -1304,7 +1323,7 @@ $$
 
 よって、あなたの Taylor 漸化式
 $$
-(e)_{m+1}=\frac{1}{m+1}(L e_m - \delta_{m0}r)
+(e)_{m+1}=\frac{1}{m+1}(L e_m + \delta_{m0}r)
 $$
 は **境界で完全に閉じる**。
 
@@ -1340,7 +1359,7 @@ $$
 
 Correction-Taylor を **smoother（= 高周波誤差を減衰させる反復）**として使うときの安定条件は、結局
 $$
-e_t = L e - r \quad(\text{r は固定})
+e_t = L e + r \quad(\text{r は固定})
 $$
 の **誤差方程式**に帰着します。定常解 $e^*$ まわりで $\tilde e=e-e^*$ と置くと
 $$
@@ -1492,7 +1511,7 @@ $$
 
 ### まとめ
 
-- `Correction-Taylor` の安定性は **(\tilde e_t=L\tilde e)** のみで決まり、残差 (r) には依存しない
+- `Correction-Taylor` の安定性は **(\tilde e_t=L\tilde e)** のみで決まり、残差 $r)$には依存しない
 
 - 1モード増幅は
   $$
@@ -1503,6 +1522,6 @@ $$
   $$
   |P_M(\lambda_{\min}\Delta t)|\le1
   $$
-  を満たすよう (\Delta t) を選ぶ
+  を満たすよう $\Delta t$ を選ぶ
 
 - MG では基本的に $\Delta t \propto h^2$（よって 2倍粗で 4倍 dt）が自然だが、**低次数化しすぎるとクリップが必要**
