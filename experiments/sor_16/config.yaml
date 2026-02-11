@@ -1,0 +1,34 @@
+experiment:
+  name: sor_16_baseline
+  description: red-black sor
+
+problem:
+  equation: poisson
+  dimension: 3
+  domain:
+    type: cartesian
+    size: [1.0, 1.0, 1.0]
+  boundary_condition:
+    type: dirichlet
+    solution: analytic
+
+discretization:
+  grid:
+    nx: 16
+    ny: 16
+    nz: 16
+  layout: cell-centered
+  ghost_cells: 2
+
+solver:
+  method: sor
+  omega: 1.0
+
+convergence:
+  residual_norm: L2
+  tolerance: 1.0e-6
+  max_iterations: 20000
+
+output:
+  results_dir: results/sor_16
+  save_residual_history: true

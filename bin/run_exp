@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -e
+
+EXP_NAME="$1"
+CONFIG="experiments/${EXP_NAME}/config.yaml"
+OUTDIR="results/${EXP_NAME}"
+LOGDIR="logs"
+META="${LOGDIR}/run.json"
+
+mkdir -p "${OUTDIR}" "${LOGDIR}"
+
+GIT_COMMIT=$(git rev-parse --short HEAD)
+GIT_DIRTY=$(git diff --quiet || echo true)
+
+cat <<EOF > "${META}"
+{
+  "timestamp": "$(date -Iseconds)",
+  "git_commit": "${GIT_COMMIT}",
+  "git_dirty": "${GIT_DIRTY}",
+  "config": "${CONFIG}",
+  "output": "${OUTDIR}"
+}
+EOF
+
+echo "[run_exp] run.json written"

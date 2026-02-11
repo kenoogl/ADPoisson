@@ -1,0 +1,35 @@
+experiment:
+  name: cg_none_32_baseline
+  description: CG with no preconditioner
+
+problem:
+  equation: poisson
+  dimension: 3
+  domain:
+    type: cartesian
+    size: [1.0, 1.0, 1.0]
+  boundary_condition:
+    type: dirichlet
+    solution: analytic
+
+discretization:
+  grid:
+    nx: 32
+    ny: 32
+    nz: 32
+  layout: cell-centered
+  ghost_cells: 2
+
+solver:
+  method: cg
+  smoother:
+    type: none
+
+convergence:
+  residual_norm: L2
+  tolerance: 1.0e-6
+  max_iterations: 5000
+
+output:
+  results_dir: results/cg_none_32
+  save_residual_history: true
