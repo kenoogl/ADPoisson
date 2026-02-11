@@ -18,7 +18,7 @@
 ### Goals
 - Taylor級数展開（$M=10$次）による擬似時間積分ソルバーの実装
 - 解析解（Method of Manufactured Solutionsまたは具体的境界値問題）との比較による精度検証
-- コマンドラインからのパラメータ制御 ($N_x,N_y,N_z,M,\Delta t, Fo,\text{max\_steps},\epsilon,\alpha,\text{bc-order},\text{output-dir}$)
+- コマンドラインからのパラメータ制御 ($N_x,N_y,N_z,M,\Delta t, Fo,\text{max\_steps},\epsilon,\alpha,\text{bc-order},\text{lap-order},\text{output-dir}$)
 
 ### Non-Goals
 - 高速化（並列化・GPU化）は現時点での主目的ではない（将来拡張）
@@ -97,6 +97,8 @@ struct BoundaryConditions{Fxlo,Fxhi,Fylo,Fyhi,Fzlo,Fzhi}
     g_zlo::Fzlo; g_zhi::Fzhi
 end
 ```
+現行の `BoundaryConditions` は Dirichlet 面値（`g_*`）のみを保持する。
+requirements にある Neumann の ghost 係数式は参照仕様であり、現時点の必須 API 対象外とする。
 `ProblemSpec.dirichlet` は境界条件の元関数（`(x,y,z,alpha)->u`）として受け取り、
 `boundary_from_prob(prob)` で6面関数に分解して `BoundaryConditions` を生成する。
 境界条件の正規形は `BoundaryConditions` とする。
@@ -120,7 +122,7 @@ end
 係数全保持が必要な検証時にのみ使用（通常は非推奨）。
 ```julia
 struct TaylorArrays3D{T<:Real}
-    U::Array{T,4}  # (nx+2, ny+2, nz+2, M+1)
+    U::Array{T,4}  # (nx+4, ny+4, nz+4, M+1)
 end
 ```
 
@@ -141,7 +143,7 @@ end
 ```julia
 struct Solution{T<:Real}
     x::Vector{T}; y::Vector{T}; z::Vector{T}
-    u::Array{T, 3} # ghost cell込み: (nx+2, ny+2, nz+2)
+    u::Array{T, 3} # ghost cell 2層込み: (nx+4, ny+4, nz+4)
     t::T
     iter::Int
 end
@@ -197,12 +199,16 @@ CG 実行前に前提を満たすことを確認する。
 #### 関数シグネチャ（主要）
 ```julia
 apply_bc!(u::Array{T,3}, bc::BoundaryConditions, m::Int, config::SolverConfig; order=:spec) where {T}
-laplacian!(Lu::Array{T,3}, u::Array{T,3}, config::SolverConfig) where {T}
-compute_residual!(r::Array{T,3}, u::Array{T,3}, f::Array{T,3}, config::SolverConfig) where {T}
+laplacian!(Lu::Array{T,3}, u::Array{T,3}, config::SolverConfig; order::Symbol=:second) where {T}
+laplacian2!(Lu::Array{T,3}, u::Array{T,3}, config::SolverConfig) where {T}
+laplacian4!(Lu::Array{T,3}, u::Array{T,3}, config::SolverConfig) where {T}
+compute_residual!(r::Array{T,3}, u::Array{T,3}, f::Array{T,3}, config::SolverConfig;
+                  lap_order::Symbol=:second) where {T}
 
 make_grid(config::SolverConfig) -> (x::Vector, y::Vector, z::Vector)
 
-taylor_step!(next::Array{T,3}, curr::Array{T,3}, f::Array{T,3}, m::Int, config::SolverConfig) where {T}
+taylor_step!(next::Array{T,3}, curr::Array{T,3}, f::Array{T,3}, m::Int, config::SolverConfig;
+             lap_order::Symbol=:second) where {T}
 accumulate_taylor!(acc::Array{T,3}, coeff::Array{T,3}, dt_pow::T) where {T}
 
 # 係数を保持する場合の評価（検証用途のみ）
@@ -365,11 +371,16 @@ ssor_precond!(z::Array{T,3}, r::Array{T,3}, bc::BoundaryConditions, config::Solv
   - これらを使い回し（ping-pong）、逐次的に `u_sum` に加算していくことで、必要な3D配列を最小限（2~3枚）に抑える。
 - **Ghost Cell更新 (`boundary.jl`)**: 各次数 $m$ の計算直後に境界条件を適用する。
   - ghost更新は面のみ（エッジ・コーナーは更新しない）
-  - **高次境界（任意）**: `order=:high` の場合、$m=0$ のみ 3次外挿を用いて精度改善。
-    - 例（x-min）: $u_{1}=\frac{16}{5}g-3u_{2}+u_{3}-\frac{1}{5}u_{4}$
-    - x-max, y-min/y-max, z-min/z-max も同様に内側3点を用いる
-    - $m\ge1$ は仕様通り $u_{\text{ghost}}=-u_{\text{adj}}$
-    - `nx,ny,nz>=4` を満たす場合にのみ使用可能
+  - インデクス規約は ghost 2層: 内点 `i=3..nx+2`、ghost は `i=1,2,nx+3,nx+4`（j,k も同様）
+  - `order=:spec`（Dirichlet 2次）:
+    - ghost1 に `2g-u_adj1`、ghost2 に `2g-u_adj2` を適用
+    - 係数配列では $m=0$ が上式、$m\ge1$ は同次化して符号反転
+  - `order=:high`（Dirichlet 4次）:
+    - x-min の係数は要件定義の 4次式（$128/35,128/7$ を含む式）を使用
+    - x-max, y, z は法線方向反転で同係数を使用
+    - $m\ge1$ は $g_m=0$ として同係数の同次式を適用
+    - `nx,ny,nz>=4` を満たさない場合は `order=:spec` にフォールバック
+    - 係数の根拠は `requirements.md` の「境界条件（ghost 係数式, 2層）」節に記載する（5点補間ベース）
   - `solve(...; bc_order=:high)` で高次境界を有効化する
 - **終了条件**: 相対残差 $\|r\|_2 / \max(\|r_0\|_2, 1) \le \epsilon$（$r_0$ は初期残差）または反復回数が最大ステップ数に到達した時点の早い方（最大ステップ数のデフォルトは 10000）。
 
@@ -383,8 +394,8 @@ ADburgersでは `TaylorArrays` で全次数の係数を保持するが、3Dで�
 **実装イメージ**:
 1. `u_next .= u` で和の初期化（$m=0$）
 2. `bufA` を $u_m$、`bufB` を $u_{m+1}$ として `m=0..M-1` を反復
-3. `bufB` に `laplacian!(bufB, bufA)` を計算し、漸化式で $u_{m+1}$ を作成
-4. `apply_bc!(bufB, m+1, ...)` 後に `u_next .+= bufB * dt^m`
+3. `bufB` に `laplacian!(bufB, bufA; order=lap_order)` を計算し、漸化式で $u_{m+1}$ を作成
+4. `apply_bc!(bufB, m+1, ...)` 後に `u_next .+= bufB * dt^(m+1)`
 5. `bufA` と `bufB` を入れ替えて次の次数へ
 
 この方式で **全次数の係数保持を避けつつ** Taylor和を構築できる。
@@ -420,8 +431,10 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 - `history_vcycle_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 
 ## データモデル
-- **グリッド**: Cell-centered。インデックス $i=2 \dots N_x+1$ が内点。
-- **座標**: $x_i=(i-1.5)\Delta x,\ y_j=(j-1.5)\Delta y,\ z_k=(k-1.5)\Delta z$
+- **グリッド**: Cell-centered。インデックス $i=3 \dots N_x+2$ が内点。
+- **座標**:
+  - ghost込み配列添字では $x_i=(i-2.5)\Delta x,\ y_j=(j-2.5)\Delta y,\ z_k=(k-2.5)\Delta z$
+  - 内点座標配列（長さ `nx,ny,nz`）では $x_p=(p-0.5)\Delta x,\ y_q=(q-0.5)\Delta y,\ z_r=(r-0.5)\Delta z$（$p=1..N_x,\ q=1..N_y,\ r=1..N_z$）
 - **配列**: 3次元配列 `Array{T, 3}`（AD対応のため `T` をパラメトリックにする）。
   - `x,y,z` は内点のみの長さ `nx,ny,nz` を持つ（ghostは保持しない）
   - `make_grid` の戻り値も内点のみとする
@@ -429,8 +442,11 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 ## CLI引数（scripts/main.jl）
 - 形式: `julia scripts/main.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --Fo=0.3 --max-steps=10000 --epsilon=1e-10 --alpha=1.0 --bc-order high --output-dir results`
 - 必須: `--nx,--ny,--nz`
-- 任意: `--M,--dt,--Fo,--max-steps,--epsilon,--alpha,--bc-order,--output-dir`（`--Fo` があれば `--dt` より優先、デフォルトは requirements.md に準拠）
+- 任意: `--M,--dt,--Fo,--max-steps,--epsilon,--alpha,--bc-order,--lap-order,--output-dir`（`--Fo` があれば `--dt` より優先、デフォルトは requirements.md に準拠）
 - ソルバー指定: `--solver taylor|sor|ssor|cg|mg-uniform-taylor|mg-hierarchical-taylor|mg-correction-taylor`
+- ラプラシアン次数: `--lap-order second|fourth`（既定 `second`）
+  - `--solver` が `taylor` 以外の場合は `second` に固定
+  - `fourth` は ghost 2層移行（Task 25-27）完了まで実行時エラー
 - MG関連（`--solver mg-*` の場合）: `--mg-interval,--mg-dt-scale,--mg-M,--mg-nu1,--mg-nu2,--mg-level-Ms,--mg-level-dt-scales`
 - Correction-Taylor（`--solver mg-correction-taylor` の場合）: `--mg-corr-M,--mg-corr-dt-scale,--mg-corr-steps,--mg-corr-nu1,--mg-corr-nu2`
 - `mg_M` / `mg_dt_scale` のデフォルトは requirements.md に準拠（`mg_M=4`, `mg_dt_scale=2.0`）
@@ -440,6 +456,7 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 - 拡散数 $Fo$ のチェック: 推奨条件 $Fo \le 0.5$ を超える場合に警告を出力。
 - 拡散数の定義: $Fo=\Delta t\left(\frac{1}{\Delta x^2}+\frac{1}{\Delta y^2}+\frac{1}{\Delta z^2}\right)$
 - 残差評価は内点のみ。ghost（面以外）やエッジ/コーナーは評価対象外とする。
+- `--lap-order fourth` は ghost 2層未対応の現行実装ではエラー終了し、不整合な実行を防止する。
 
 ## テスト戦略
 - **単体テスト**: Taylor係数計算ルーチンの正当性（低次で手計算と比較）。

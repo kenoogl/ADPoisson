@@ -48,19 +48,67 @@ function initialize_solution(config::SolverConfig, prob::ProblemSpec)
 end
 
 """
-    laplacian!(Lu, u, config; Lx=1, Ly=1, Lz=1)
+    laplacian!(Lu, u, config; Lx=1, Ly=1, Lz=1, order=:second)
 
-Compute 7-point Laplacian for interior points. Ghost cells are assumed updated.
+Compute Laplacian for interior points. Ghost cells are assumed updated.
 """
-function laplacian!(Lu::Array{T,3}, u::Array{T,3}, config::SolverConfig; Lx=1, Ly=1, Lz=1) where {T}
+function laplacian!(Lu::Array{T,3}, u::Array{T,3}, config::SolverConfig;
+                    Lx=1, Ly=1, Lz=1, order::Symbol=:second) where {T}
+    if order === :second
+        return laplacian2!(Lu, u, config; Lx=Lx, Ly=Ly, Lz=Lz)
+    elseif order === :fourth
+        return laplacian4!(Lu, u, config; Lx=Lx, Ly=Ly, Lz=Lz)
+    end
+    throw(ArgumentError("unknown laplacian order: $(order). use :second or :fourth"))
+end
+
+"""
+    laplacian2!(Lu, u, config; Lx=1, Ly=1, Lz=1)
+
+Compute 2nd-order 7-point Laplacian for interior points.
+"""
+function laplacian2!(Lu::Array{T,3}, u::Array{T,3}, config::SolverConfig; Lx=1, Ly=1, Lz=1) where {T}
     dx, dy, dz = grid_spacing(config; Lx=Lx, Ly=Ly, Lz=Lz)
     inv_dx2 = one(T) / (dx * dx)
     inv_dy2 = one(T) / (dy * dy)
     inv_dz2 = one(T) / (dz * dz)
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+    ngx = (size(u, 1) - config.nx) ÷ 2
+    ngy = (size(u, 2) - config.ny) ÷ 2
+    ngz = (size(u, 3) - config.nz) ÷ 2
+    @inbounds for k in ngz+1:ngz+config.nz, j in ngy+1:ngy+config.ny, i in ngx+1:ngx+config.nx
         Lu[i, j, k] = (u[i+1, j, k] - 2 * u[i, j, k] + u[i-1, j, k]) * inv_dx2 +
                      (u[i, j+1, k] - 2 * u[i, j, k] + u[i, j-1, k]) * inv_dy2 +
                      (u[i, j, k+1] - 2 * u[i, j, k] + u[i, j, k-1]) * inv_dz2
+    end
+    return Lu
+end
+
+"""
+    laplacian4!(Lu, u, config; Lx=1, Ly=1, Lz=1)
+
+Compute 4th-order Laplacian (radius=2, cross terms omitted) for interior points.
+Requires at least two ghost layers in every direction.
+"""
+function laplacian4!(Lu::Array{T,3}, u::Array{T,3}, config::SolverConfig; Lx=1, Ly=1, Lz=1) where {T}
+    dx, dy, dz = grid_spacing(config; Lx=Lx, Ly=Ly, Lz=Lz)
+    inv_12dx2 = one(T) / (12 * dx * dx)
+    inv_12dy2 = one(T) / (12 * dy * dy)
+    inv_12dz2 = one(T) / (12 * dz * dz)
+    ngx = (size(u, 1) - config.nx) ÷ 2
+    ngy = (size(u, 2) - config.ny) ÷ 2
+    ngz = (size(u, 3) - config.nz) ÷ 2
+    if ngx < 2 || ngy < 2 || ngz < 2
+        throw(ArgumentError("laplacian4! requires two ghost layers; got (ngx,ngy,ngz)=($(ngx),$(ngy),$(ngz))"))
+    end
+
+    @inbounds for k in ngz+1:ngz+config.nz, j in ngy+1:ngy+config.ny, i in ngx+1:ngx+config.nx
+        d2x = (-u[i+2, j, k] + 16 * u[i+1, j, k] - 30 * u[i, j, k] +
+               16 * u[i-1, j, k] - u[i-2, j, k]) * inv_12dx2
+        d2y = (-u[i, j+2, k] + 16 * u[i, j+1, k] - 30 * u[i, j, k] +
+               16 * u[i, j-1, k] - u[i, j-2, k]) * inv_12dy2
+        d2z = (-u[i, j, k+2] + 16 * u[i, j, k+1] - 30 * u[i, j, k] +
+               16 * u[i, j, k-1] - u[i, j, k-2]) * inv_12dz2
+        Lu[i, j, k] = d2x + d2y + d2z
     end
     return Lu
 end
@@ -72,8 +120,9 @@ Compute Taylor coefficient u_{m+1} from u_m.
 If f is time-invariant: for m >= 1, the source term is zero.
 """
 function taylor_step!(next::Array{T,3}, curr::Array{T,3}, f::Array{T,3}, m::Int,
-                      config::SolverConfig; Lx=1, Ly=1, Lz=1) where {T}
-    laplacian!(next, curr, config; Lx=Lx, Ly=Ly, Lz=Lz)
+                      config::SolverConfig; Lx=1, Ly=1, Lz=1,
+                      lap_order::Symbol=:second) where {T}
+    laplacian!(next, curr, config; Lx=Lx, Ly=Ly, Lz=Lz, order=lap_order)
     if m == 0
         @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
             next[i, j, k] = (next[i, j, k] - f[i, j, k]) / (m + 1)
@@ -125,7 +174,7 @@ Compute Taylor series update using ping-pong buffers.
 function taylor_series_update!(u_next::Array{T,3}, buffers::TaylorBuffers3D{T},
                                f::Array{T,3}, bc::BoundaryConditions,
                                config::SolverConfig, prob::ProblemSpec;
-                               bc_order=:spec) where {T}
+                               bc_order=:spec, lap_order::Symbol=:second) where {T}
     bufA = buffers.bufA
     bufB = buffers.bufB
     acc = buffers.acc
@@ -135,7 +184,8 @@ function taylor_series_update!(u_next::Array{T,3}, buffers::TaylorBuffers3D{T},
     dt_pow = one(T)
 
     for m in 0:config.M-1
-        taylor_step!(bufB, bufA, f, m, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+        taylor_step!(bufB, bufA, f, m, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz,
+                     lap_order=lap_order)
         apply_bc!(bufB, bc, m + 1, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
         dt_pow *= config.dt
         accumulate_taylor!(acc, bufB, dt_pow, config)
@@ -155,7 +205,7 @@ Compute Taylor series update using precomputed residual r0 = Lu - f as the m=0 c
 function taylor_series_update_reuse!(u_next::Array{T,3}, buffers::TaylorBuffers3D{T},
                                      r0::Array{T,3}, f::Array{T,3}, bc::BoundaryConditions,
                                      config::SolverConfig, prob::ProblemSpec;
-                                     bc_order=:spec) where {T}
+                                     bc_order=:spec, lap_order::Symbol=:second) where {T}
     if config.M == 0
         apply_bc!(u_next, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
         return u_next
@@ -175,7 +225,8 @@ function taylor_series_update_reuse!(u_next::Array{T,3}, buffers::TaylorBuffers3
     bufA, bufB = bufB, bufA
 
     for m in 1:config.M-1
-        taylor_step!(bufB, bufA, f, m, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+        taylor_step!(bufB, bufA, f, m, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz,
+                     lap_order=lap_order)
         apply_bc!(bufB, bc, m + 1, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
         dt_pow *= config.dt
         accumulate_taylor!(acc, bufB, dt_pow, config)
@@ -209,9 +260,13 @@ end
 Compute residual r = Lu - f on interior points.
 """
 function compute_residual!(r::Array{T,3}, u::Array{T,3}, f::Array{T,3},
-                           config::SolverConfig; Lx=1, Ly=1, Lz=1) where {T}
-    laplacian!(r, u, config; Lx=Lx, Ly=Ly, Lz=Lz)
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
+                           config::SolverConfig; Lx=1, Ly=1, Lz=1,
+                           lap_order::Symbol=:second) where {T}
+    laplacian!(r, u, config; Lx=Lx, Ly=Ly, Lz=Lz, order=lap_order)
+    ngx = (size(u, 1) - config.nx) ÷ 2
+    ngy = (size(u, 2) - config.ny) ÷ 2
+    ngz = (size(u, 3) - config.nz) ÷ 2
+    @inbounds for k in ngz+1:ngz+config.nz, j in ngy+1:ngy+config.ny, i in ngx+1:ngx+config.nx
         r[i, j, k] -= f[i, j, k]
     end
     return r
@@ -223,17 +278,15 @@ end
 Compute residual r = Lu - f and return its L2 norm (interior only) in one pass.
 """
 function compute_residual_norm!(r::Array{T,3}, u::Array{T,3}, f::Array{T,3},
-                                config::SolverConfig; Lx=1, Ly=1, Lz=1) where {T}
-    dx, dy, dz = grid_spacing(config; Lx=Lx, Ly=Ly, Lz=Lz)
-    inv_dx2 = one(T) / (dx * dx)
-    inv_dy2 = one(T) / (dy * dy)
-    inv_dz2 = one(T) / (dz * dz)
+                                config::SolverConfig; Lx=1, Ly=1, Lz=1,
+                                lap_order::Symbol=:second) where {T}
+    laplacian!(r, u, config; Lx=Lx, Ly=Ly, Lz=Lz, order=lap_order)
+    ngx = (size(u, 1) - config.nx) ÷ 2
+    ngy = (size(u, 2) - config.ny) ÷ 2
+    ngz = (size(u, 3) - config.nz) ÷ 2
     s = zero(T)
-    @inbounds for k in 2:config.nz+1, j in 2:config.ny+1, i in 2:config.nx+1
-        Lu = (u[i+1, j, k] - 2 * u[i, j, k] + u[i-1, j, k]) * inv_dx2 +
-             (u[i, j+1, k] - 2 * u[i, j, k] + u[i, j-1, k]) * inv_dy2 +
-             (u[i, j, k+1] - 2 * u[i, j, k] + u[i, j, k-1]) * inv_dz2
-        val = Lu - f[i, j, k]
+    @inbounds for k in ngz+1:ngz+config.nz, j in ngy+1:ngy+config.ny, i in ngx+1:ngx+config.nx
+        val = r[i, j, k] - f[i, j, k]
         r[i, j, k] = val
         s += val * val
     end
@@ -327,6 +380,7 @@ end
 
 function solve_core(config::SolverConfig, prob::ProblemSpec;
                     bc_order=:spec, output_dir="results",
+                    lap_order::Symbol=:second,
                     mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4,
                     mg_vcycle::Bool=false, mg_nu1::Int=1, mg_nu2::Int=1,
                     mg_level_Ms::Union{Nothing,AbstractVector{Int}}=nothing,
@@ -355,7 +409,8 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
 
     iter = 0
     apply_bc!(sol.u, bc, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=bc_order)
-    r0 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+    r0 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz,
+                                lap_order=lap_order)
     denom = max(r0, one(r0))
     history = IOBuffer()
     println(history, "# step err_l2 res_l2")
@@ -386,13 +441,15 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
         err_l2 = l2_error_exact_precomputed(sol.u, u_exact, prob, config)
         @printf(history, "%d %.6e %.6e\n", iter, err_l2, rnorm)
         if debug_residual
-            res_check = compute_residual_norm!(r_check, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz) / denom
+            res_check = compute_residual_norm!(r_check, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz,
+                                               lap_order=lap_order) / denom
             @printf(debug_io, "%d %.6e %.6e %.6e\n", iter, rnorm, res_check, abs(rnorm - res_check))
         end
         if rnorm <= config.epsilon || iter >= config.max_steps
             break
         end
-        taylor_series_update_reuse!(sol.u, buffers, r, f, bc, config, prob; bc_order=bc_order)
+        taylor_series_update_reuse!(sol.u, buffers, r, f, bc, config, prob;
+                                    bc_order=bc_order, lap_order=lap_order)
         iter += 1
         if mg_vcycle && mg_interval > 0 && (iter % mg_interval == 0)
             vcycle!(sol.u, f, bc, config, prob, mg_ws;
@@ -404,7 +461,8 @@ function solve_core(config::SolverConfig, prob::ProblemSpec;
                     corr_nu1=mg_corr_nu1, corr_nu2=mg_corr_nu2,
                     bc_order=bc_order, debug_io=vcycle_io, debug_denom=denom)
         end
-        res_l2 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
+        res_l2 = compute_residual_norm!(r, sol.u, f, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz,
+                                        lap_order=lap_order)
         rnorm = res_l2 / denom
     end
     runtime = time() - t_start
@@ -443,6 +501,7 @@ Returns (Solution, runtime_s) where runtime is the solve loop only.
 """
 function solve_with_runtime(config::SolverConfig, prob::ProblemSpec;
                             bc_order=:spec, output_dir="results",
+                            lap_order::Symbol=:second,
                             mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4,
                             mg_vcycle::Bool=false, mg_nu1::Int=1, mg_nu2::Int=1,
                             mg_level_Ms::Union{Nothing,AbstractVector{Int}}=nothing,
@@ -454,6 +513,7 @@ function solve_with_runtime(config::SolverConfig, prob::ProblemSpec;
                             debug_residual::Bool=false, debug_vcycle::Bool=false,
                             mg_workspace=nothing)
     return solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
+                      lap_order=lap_order,
                       mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
                       mg_vcycle=mg_vcycle, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
                       mg_level_Ms=mg_level_Ms, mg_level_dt_scales=mg_level_dt_scales,
@@ -470,6 +530,7 @@ end
 Main solver loop using Taylor series pseudo-time stepping.
 """
 function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_dir="results",
+               lap_order::Symbol=:second,
                mg_interval::Int=0, mg_dt_scale::Real=2.0, mg_M::Int=4,
                mg_vcycle::Bool=false, mg_nu1::Int=1, mg_nu2::Int=1,
                mg_level_Ms::Union{Nothing,AbstractVector{Int}}=nothing,
@@ -481,6 +542,7 @@ function solve(config::SolverConfig, prob::ProblemSpec; bc_order=:spec, output_d
                debug_residual::Bool=false, debug_vcycle::Bool=false,
                mg_workspace=nothing)
     sol, _ = solve_core(config, prob; bc_order=bc_order, output_dir=output_dir,
+                        lap_order=lap_order,
                         mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
                         mg_vcycle=mg_vcycle, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
                         mg_level_Ms=mg_level_Ms, mg_level_dt_scales=mg_level_dt_scales,

@@ -1,7 +1,7 @@
 using Test
 using ADPoisson
 using Printf
-import ADPoisson: laplacian!, taylor_step!, apply_bc!, boundary_from_prob, grid_spacing
+import ADPoisson: laplacian!, laplacian4!, taylor_step!, apply_bc!, boundary_from_prob, grid_spacing
 import ADPoisson: exact_solution, source_term, dirichlet_bc
 
 const RUN_IMPL_TESTS = get(ENV, "ADPOISSON_IMPL_TEST", "0") == "1"
@@ -100,6 +100,52 @@ if RUN_IMPL_TESTS
         @test order1 > 1.5
         @test order2 > 1.5
     end
+end
+
+@testset "laplacian4!" begin
+    ns = [16, 32, 64]
+    errs = Float64[]
+
+    for n in ns
+        config = SolverConfig(n, n, n, 2, 1e-3, 1, 1e-10)
+        dx = 1.0 / n
+        dy = 1.0 / n
+        dz = 1.0 / n
+        u = zeros(n + 4, n + 4, n + 4)
+        Lu = similar(u)
+
+        @inbounds for k in 1:n+4
+            z = (k - 2.5) * dz
+            for j in 1:n+4
+                y = (j - 2.5) * dy
+                for i in 1:n+4
+                    x = (i - 2.5) * dx
+                    u[i, j, k] = sin(2 * pi * x) * sin(2 * pi * y) * sin(2 * pi * z)
+                end
+            end
+        end
+
+        laplacian4!(Lu, u, config)
+        s = 0.0
+        @inbounds for k in 3:n+2
+            z = (k - 2.5) * dz
+            for j in 3:n+2
+                y = (j - 2.5) * dy
+                for i in 3:n+2
+                    x = (i - 2.5) * dx
+                    exact = -12 * pi^2 * sin(2 * pi * x) * sin(2 * pi * y) * sin(2 * pi * z)
+                    d = Lu[i, j, k] - exact
+                    s += d * d
+                end
+            end
+        end
+        push!(errs, sqrt(s / (n^3)))
+    end
+
+    order1 = log2(errs[1] / errs[2])
+    order2 = log2(errs[2] / errs[3])
+    @test order1 > 3.5
+    @test order2 > 3.5
 end
 
 @testset "solver_error" begin

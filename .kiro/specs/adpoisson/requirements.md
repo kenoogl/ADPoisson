@@ -11,7 +11,9 @@
   - 未知変数: スカラー場 $u(x, y, z, t)$ （※tは擬似時間で時間発展形式で扱う）
   - ポアソン方程式は通常時間独立であるが、本プロジェクトでは時間発展形式で扱う
   - 方程式: $\frac{\partial u}{\partial t} = \nabla^2 u - f$ を想定（擬似時間）
-  - 空間離散化: 差分法二次精度中心差分
+  - 空間離散化: 差分法中心差分（既定は2次、`--lap-order fourth` で4次ラプラシアンを選択可能）
+    - 4次ラプラシアンは半径2（各方向5点、クロス項なし）を用いる
+    - 現行実装（ghost 1層）では `--lap-order fourth` を実行時エラーとし、ghost 2層移行（Task 25-27）後に有効化する
   - 検証ケースでは $f=0$ を用いるが、一般性のために $f$ は残す
 - [ ] **時間積分手法**
   - Taylor級数展開を用いた高次精度時間積分
@@ -50,6 +52,7 @@
     - SSOR 前処理では `order=:spec` を固定する（`order=:high` は使わない）
   - SSOR ソルバー（RBSSOR）を選択可能とする
   - CLI は `--solver` で `taylor/sor/ssor/cg/mg-uniform-taylor/mg-hierarchical-taylor/mg-correction-taylor` を指定し、`--cg-precond` は `--solver=cg` のときのみ有効
+  - Taylor 系では `--lap-order second|fourth` を受け付ける（非Taylorソルバーでは `second` 固定）
 - [ ] **加速（マルチグリッド的アプローチ）**
   - Taylor 擬似時間法の残差履歴が「高周波が早く減衰し低周波が残る」挙動であるため、マルチグリッド的加速を検討する
   - **レベル1/2は実験済みで不採用**のため、実装対象外とする
@@ -119,59 +122,69 @@
   - MG の履歴ファイル命名（レベル3のみ）:
     - レベル3: `history_vcycle_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 - [ ] **Taylor級数漸化式（3D Poisson, 擬似時間）**
+  - 注記: 本仕様は目標状態（ghost 2層）を記載する。現行実装（ghost 1層）からの移行手順は `tasks.md` の Phase 6（Task 25-27）を参照する。
   - 詳細は `/Users/Daily/Development/ADTM/ADPoisson漸化式.md` に準拠
   - Poisson: $\nabla^2 u = f$ を擬似時間で $u_t = \nabla^2 u - f$ として解く
-  - 3D cell-centered、Julia 1-origin、ghost 1層を前提
+  - 3D cell-centered、Julia 1-origin、ghost 2層を前提
   - Taylor係数: $(u_{i,j,k})_m=\frac{1}{m!}\left.\frac{\partial^m u_{i,j,k}}{\partial t^m}\right|_{t=t_0}$
   - 更新: $u_{i,j,k}(t_0+\Delta t)\approx \sum_{m=0}^{M}(u_{i,j,k})_m(\Delta t)^m$
   - 7点差分ラプラシアン:
     $$(L u)_{i,j,k}= \frac{u_{i+1,j,k}-2u_{i,j,k}+u_{i-1,j,k}}{\Delta x^2}+
     \frac{u_{i,j+1,k}-2u_{i,j,k}+u_{i,j-1,k}}{\Delta y^2}+
     \frac{u_{i,j,k+1}-2u_{i,j,k}+u_{i,j,k-1}}{\Delta z^2}$$
+  - 4次差分ラプラシアン（`lap_order=:fourth`, 半径2, 各軸5点, クロス項なし=13点）:
+    $$(L^{(4)} u)_{i,j,k}=
+    \frac{-u_{i+2,j,k}+16u_{i+1,j,k}-30u_{i,j,k}+16u_{i-1,j,k}-u_{i-2,j,k}}{12\Delta x^2}+
+    \frac{-u_{i,j+2,k}+16u_{i,j+1,k}-30u_{i,j,k}+16u_{i,j-1,k}-u_{i,j-2,k}}{12\Delta y^2}+
+    \frac{-u_{i,j,k+2}+16u_{i,j,k+1}-30u_{i,j,k}+16u_{i,j,k-1}-u_{i,j,k-2}}{12\Delta z^2}$$
   - 漸化式（内点）:
     $$(u_{i,j,k})_{m+1}=\frac{1}{m+1}\Bigl((L(u_m))_{i,j,k}-(f_{i,j,k})_m\Bigr)$$
     $f$ が擬似時間一定なら $(f)_0=f,\ (f)_m=0\ (m\ge1)$ とし、$m\ge1$ では
     $$(u_{i,j,k})_{m+1}= \frac{1}{m+1}(L(u_m))_{i,j,k}$$
     なお $f$ の時間依存は将来拡張とする
-  - 境界条件（ghost 係数式）:
-    - Dirichlet $u=g$: $m=0$ で $u_{\text{ghost}}=2g-u_{\text{adj}}$、$m\ge1$ で $u_{\text{ghost}}=-u_{\text{adj}}$
-    - **高次境界（任意, m=0 のみ）**: 境界近傍の精度改善のため、$m=0$ のみ 3次外挿を許可する。
-      - 一般式: $u_{\text{ghost}}=\frac{16}{5}g-3u_1+u_2-\frac{1}{5}u_3$
-      - ここで $u_1,u_2,u_3$ は境界から内側方向に並ぶ 1,2,3 番目の内点値
-      - 適用条件: 各方向で内点が 4 点以上（`nx,ny,nz >= 4`）
-    - Neumann $\partial u/\partial n=h$: $m=0$ で $u_{\text{ghost}}=u_{\text{adj}}\pm\Delta n\,h$、$m\ge1$ で $u_{\text{ghost}}=u_{\text{adj}}$
-  - 6面の ghost 係数式（Julia 1-origin）:
+  - 境界条件（ghost 係数式, 2層）:
+    - Dirichlet $u=g$（2次, `order=:spec`）:
+      - ghost1: $u_{\text{ghost1}}=2g-u_{\text{adj1}}$
+      - ghost2: $u_{\text{ghost2}}=2g-u_{\text{adj2}}$
+      - Taylor 係数では、$m=0$ で上式、$m\ge1$ で $u_{\text{ghost1}}=-u_{\text{adj1}},\ u_{\text{ghost2}}=-u_{\text{adj2}}$
+    - Dirichlet $u=g$（4次, `order=:high`）:
+      - x-min（$m=0$）:
+        - $(u_{2,j,k})_0=\frac{128}{35}g_{xlo}[j-2,k-2]-4(u_{3,j,k})_0+2(u_{4,j,k})_0-\frac{4}{5}(u_{5,j,k})_0+\frac{1}{7}(u_{6,j,k})_0$
+        - $(u_{1,j,k})_0=\frac{128}{7}g_{xlo}[j-2,k-2]-30(u_{3,j,k})_0+20(u_{4,j,k})_0-9(u_{5,j,k})_0+\frac{12}{7}(u_{6,j,k})_0$
+      - x-min（$m\ge1$）:
+        - $(u_{2,j,k})_m=-4(u_{3,j,k})_m+2(u_{4,j,k})_m-\frac{4}{5}(u_{5,j,k})_m+\frac{1}{7}(u_{6,j,k})_m$
+        - $(u_{1,j,k})_m=-30(u_{3,j,k})_m+20(u_{4,j,k})_m-9(u_{5,j,k})_m+\frac{12}{7}(u_{6,j,k})_m$
+      - x-max, y-min/y-max, z-min/z-max は法線方向を反転して同係数を用いる
+      - 適用条件: 各方向で内点4点以上（`nx,ny,nz >= 4`）を満たさない場合は `order=:spec` にフォールバック
+      - 理由: 4次式で法線方向の内点4点（例: x-min では $u_3,u_4,u_5,u_6$）を参照するため
+    - Neumann $\partial u/\partial n=h$（外向き法線）:
+      - $m=0$: $u_{\text{ghost1}}=u_{\text{adj1}}+\Delta n\,h,\ u_{\text{ghost2}}=u_{\text{adj2}}+3\Delta n\,h$
+      - $m\ge1$: $u_{\text{ghost1}}=u_{\text{adj1}},\ u_{\text{ghost2}}=u_{\text{adj2}}$
+      - 全境界 Neumann の場合は nullspace 対策として平均値固定などのゲージ条件を必要とする
+  - 6面の ghost 係数式（Julia 1-origin, ghost 2層）:
     - Dirichlet（面データ: `g_xlo/g_xhi/g_ylo/g_yhi/g_zlo/g_zhi`）
-      - x-min: $(u_{1,j,k})_0=2g_{xlo}[j-1,k-1]-(u_{2,j,k})_0$, $(u_{1,j,k})_m=-(u_{2,j,k})_m$
-      - x-max: $(u_{N_x+2,j,k})_0=2g_{xhi}[j-1,k-1]-(u_{N_x+1,j,k})_0$, $(u_{N_x+2,j,k})_m=-(u_{N_x+1,j,k})_m$
-      - y-min: $(u_{i,1,k})_0=2g_{ylo}[i-1,k-1]-(u_{i,2,k})_0$, $(u_{i,1,k})_m=-(u_{i,2,k})_m$
-      - y-max: $(u_{i,N_y+2,k})_0=2g_{yhi}[i-1,k-1]-(u_{i,N_y+1,k})_0$, $(u_{i,N_y+2,k})_m=-(u_{i,N_y+1,k})_m$
-      - z-min: $(u_{i,j,1})_0=2g_{zlo}[i-1,j-1]-(u_{i,j,2})_0$, $(u_{i,j,1})_m=-(u_{i,j,2})_m$
-      - z-max: $(u_{i,j,N_z+2})_0=2g_{zhi}[i-1,j-1]-(u_{i,j,N_z+1})_0$, $(u_{i,j,N_z+2})_m=-(u_{i,j,N_z+1})_m$
-      - **高次境界（任意, m=0 のみ）**:
-        - x-min: $(u_{1,j,k})_0=\frac{16}{5}g_{xlo}[j-1,k-1]-3(u_{2,j,k})_0+(u_{3,j,k})_0-\frac{1}{5}(u_{4,j,k})_0$
-        - x-max: $(u_{N_x+2,j,k})_0=\frac{16}{5}g_{xhi}[j-1,k-1]-3(u_{N_x+1,j,k})_0+(u_{N_x,j,k})_0-\frac{1}{5}(u_{N_x-1,j,k})_0$
-        - y-min: $(u_{i,1,k})_0=\frac{16}{5}g_{ylo}[i-1,k-1]-3(u_{i,2,k})_0+(u_{i,3,k})_0-\frac{1}{5}(u_{i,4,k})_0$
-        - y-max: $(u_{i,N_y+2,k})_0=\frac{16}{5}g_{yhi}[i-1,k-1]-3(u_{i,N_y+1,k})_0+(u_{i,N_y,k})_0-\frac{1}{5}(u_{i,N_y-1,k})_0$
-        - z-min: $(u_{i,j,1})_0=\frac{16}{5}g_{zlo}[i-1,j-1]-3(u_{i,j,2})_0+(u_{i,j,3})_0-\frac{1}{5}(u_{i,j,4})_0$
-        - z-max: $(u_{i,j,N_z+2})_0=\frac{16}{5}g_{zhi}[i-1,j-1]-3(u_{i,j,N_z+1})_0+(u_{i,j,N_z})_0-\frac{1}{5}(u_{i,j,N_z-1})_0$
+      - x-min: $(u_{2,j,k})_0=2g_{xlo}[j-2,k-2]-(u_{3,j,k})_0$, $(u_{1,j,k})_0=2g_{xlo}[j-2,k-2]-(u_{4,j,k})_0$
+      - x-max: $(u_{N_x+3,j,k})_0=2g_{xhi}[j-2,k-2]-(u_{N_x+2,j,k})_0$, $(u_{N_x+4,j,k})_0=2g_{xhi}[j-2,k-2]-(u_{N_x+1,j,k})_0$
+      - y-min: $(u_{i,2,k})_0=2g_{ylo}[i-2,k-2]-(u_{i,3,k})_0$, $(u_{i,1,k})_0=2g_{ylo}[i-2,k-2]-(u_{i,4,k})_0$
+      - y-max: $(u_{i,N_y+3,k})_0=2g_{yhi}[i-2,k-2]-(u_{i,N_y+2,k})_0$, $(u_{i,N_y+4,k})_0=2g_{yhi}[i-2,k-2]-(u_{i,N_y+1,k})_0$
+      - z-min: $(u_{i,j,2})_0=2g_{zlo}[i-2,j-2]-(u_{i,j,3})_0$, $(u_{i,j,1})_0=2g_{zlo}[i-2,j-2]-(u_{i,j,4})_0$
+      - z-max: $(u_{i,j,N_z+3})_0=2g_{zhi}[i-2,j-2]-(u_{i,j,N_z+2})_0$, $(u_{i,j,N_z+4})_0=2g_{zhi}[i-2,j-2]-(u_{i,j,N_z+1})_0$
+      - $m\ge1$ は対応する内点係数の符号反転
     - Neumann（面データ: `h_xlo/h_xhi/h_ylo/h_yhi/h_zlo/h_zhi`）
-      - x-min: $(u_{1,j,k})_0=(u_{2,j,k})_0+\Delta x\,h_{xlo}[j-1,k-1]$, $(u_{1,j,k})_m=(u_{2,j,k})_m$
-      - x-max: $(u_{N_x+2,j,k})_0=(u_{N_x+1,j,k})_0-\Delta x\,h_{xhi}[j-1,k-1]$, $(u_{N_x+2,j,k})_m=(u_{N_x+1,j,k})_m$
-      - y-min: $(u_{i,1,k})_0=(u_{i,2,k})_0+\Delta y\,h_{ylo}[i-1,k-1]$, $(u_{i,1,k})_m=(u_{i,2,k})_m$
-      - y-max: $(u_{i,N_y+2,k})_0=(u_{i,N_y+1,k})_0-\Delta y\,h_{yhi}[i-1,k-1]$, $(u_{i,N_y+2,k})_m=(u_{i,N_y+1,k})_m$
-      - z-min: $(u_{i,j,1})_0=(u_{i,j,2})_0+\Delta z\,h_{zlo}[i-1,j-1]$, $(u_{i,j,1})_m=(u_{i,j,2})_m$
-      - z-max: $(u_{i,j,N_z+2})_0=(u_{i,j,N_z+1})_0-\Delta z\,h_{zhi}[i-1,j-1]$, $(u_{i,j,N_z+2})_m=(u_{i,j,N_z+1})_m$
+      - 各面で外向き法線方向の $\Delta n$ を用い、上記の ghost1/ghost2 規則を適用する
+      - 本節の Neumann 式は参照仕様であり、現行 API/実装の必須対象外とする
   - Neumann境界は将来拡張として扱い、本仕様での必須実装はDirichletのみ（Neumannの6面式は参考記載）
 - [ ] **検証機能**
   - 解析解の定義（Method of Manufactured Solutions等）
   - 数値解と解析解の比較は、相対 $L2$ 誤差 $\|u-u_{\text{exact}}\|_2/\|u_{\text{exact}}\|_2 \le 10^{-3}$ を満たすこと
 - 計算格子
   - 直交格子で、分割数 $N_x, N_y, N_z$ を入力し、各辺長=1を割り、格子幅 $\Delta x,\Delta y,\Delta z$ を計算
-  - 3D cell-centered 配置で ghost 1層を含む配列として保持し、境界条件はghost層に反映して適用する
-  - 配列サイズは $(N_x+2, N_y+2, N_z+2)$
-  - 内部点の添字は $i=2..N_x+1,\ j=2..N_y+1,\ k=2..N_z+1$
-  - cell-centeredの物理座標は $x_i=(i-1.5)\Delta x,\ y_j=(j-1.5)\Delta y,\ z_k=(k-1.5)\Delta z$
+  - 3D cell-centered 配置で ghost 2層を含む配列として保持し、境界条件はghost層に反映して適用する
+  - 配列サイズは $(N_x+4, N_y+4, N_z+4)$
+  - 内部点の添字は $i=3..N_x+2,\ j=3..N_y+2,\ k=3..N_z+2$
+  - cell-centeredの物理座標（**ghost込み配列添字**）は $x_i=(i-2.5)\Delta x,\ y_j=(j-2.5)\Delta y,\ z_k=(k-2.5)\Delta z$
+  - 内点のみの座標配列を別に持つ場合は、内点添字 $p=1..N_x,\ q=1..N_y,\ r=1..N_z$ として
+    $x_p=(p-0.5)\Delta x,\ y_q=(q-0.5)\Delta y,\ z_r=(r-0.5)\Delta z$ を用いる
 - **領域・境界条件・初期条件**
   - 計算領域: $[0,1]^3$
   - 境界条件（Dirichlet）:
@@ -194,6 +207,9 @@
   - $N_x, N_y, N_z$（または `n` で等方格子指定）, Taylor展開次数 $M$, $\Delta t$ または $Fo$, 最大ステップ数, 境界条件次数（`spec`/`high`）, 出力ディレクトリ
   - ソルバー指定: `--solver taylor|sor|ssor|cg|mg-uniform-taylor|mg-hierarchical-taylor|mg-correction-taylor`（既定 `taylor`）
   - 前処理指定: `--cg-precond none|ssor`（`--solver=cg` の場合のみ有効）
+  - ラプラシアン次数指定: `--lap-order second|fourth`（既定 `second`）
+    - `--solver` が `taylor` 以外の場合は `second` に固定する
+    - `fourth` は ghost 2層実装完了まで使用不可（実行時エラー）
   - 可視化は $y=0.5$ の断面（XZ面）をヒートマップ/コンターで表示し、解析解との誤差も可視化（出力先は指定可能）
   - 擬似時間ステップ履歴のファイル出力を行う
 

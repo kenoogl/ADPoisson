@@ -44,12 +44,12 @@ function make_run_dir(output_dir; prefix="run")
 end
 
 function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol,
-                      output_dir::String, solver::Symbol, cg_precond::Symbol)
+                      lap_order::Symbol, output_dir::String, solver::Symbol, cg_precond::Symbol)
     warm_dir = joinpath(output_dir, "_warmup")
     isdir(warm_dir) || mkpath(warm_dir)
     warm_config = SolverConfig(config.nx, config.ny, config.nz, config.M, config.dt, 1, 0.0)
     if solver === :taylor
-        solve(warm_config, prob; bc_order=bc_order, output_dir=warm_dir)
+        solve(warm_config, prob; bc_order=bc_order, lap_order=lap_order, output_dir=warm_dir)
     elseif solver === :sor
         sor_solve(prob, warm_config; bc_order=bc_order, output_dir=warm_dir)
     elseif solver === :ssor
@@ -135,6 +135,8 @@ function parse_args(args)
             end
             if key == "bc-order" || key == "bc_order"
                 opts["bc_order"] = args[i + 1]
+            elseif key == "lap-order" || key == "lap_order"
+                opts["lap_order"] = lowercase(args[i + 1])
             elseif key == "output-dir" || key == "output_dir"
                 opts["output_dir"] = args[i + 1]
             elseif key == "Fo" || key == "fo"
@@ -232,6 +234,9 @@ function main()
                           Int(opts["M"]), dt, Int(opts["max_steps"]), opts["epsilon"])
     prob, _ = make_problem(config; alpha=opts["alpha"])
     bc_order = Symbol(opts["bc_order"])
+    lap_order = Symbol(lowercase(string(opts["lap_order"])))
+    (lap_order === :second || lap_order === :fourth) ||
+        error("lap-order must be second/fourth")
     solver_mode = lowercase(opts["solver"])
     solver = :taylor
     cg_precond = Symbol(lowercase(opts["cg_precond"]))
@@ -304,10 +309,17 @@ function main()
         @warn "bc-order is only valid for taylor; forcing to spec for iterative solvers" solver=solver bc_order=bc_order
         bc_order = :spec
     end
+    if solver !== :taylor && lap_order !== :second
+        @warn "lap-order is only valid for taylor; forcing to second for iterative solvers" solver=solver lap_order=lap_order
+        lap_order = :second
+    end
+    if solver === :taylor && lap_order === :fourth
+        error("--lap-order fourth requires ghost 2-layer runtime arrays. Apply Phase 6 (Task 25-27) first.")
+    end
     println("run config:")
     @printf("  nx=%d ny=%d nz=%d M=%d\n", config.nx, config.ny, config.nz, config.M)
     @printf("  dt=%.3e max_steps=%d epsilon=%.3e\n", config.dt, config.max_steps, config.epsilon)
-    @printf("  alpha=%.6f bc_order=%s\n", prob.alpha, string(bc_order))
+    @printf("  alpha=%.6f bc_order=%s lap_order=%s\n", prob.alpha, string(bc_order), string(lap_order))
     @printf("  solver=%s\n", solver_mode)
     if solver === :cg
         @printf("  cg_precond=%s\n", string(cg_precond))
@@ -332,6 +344,7 @@ function main()
         "epsilon" => config.epsilon,
         "alpha" => prob.alpha,
         "bc_order" => string(bc_order),
+        "lap_order" => string(lap_order),
         "solver" => solver_mode,
         "warmup" => true,
     )
@@ -370,10 +383,10 @@ function main()
     open(joinpath(run_dir, "run_config.toml"), "w") do io
         TOML.print(io, run_config)
     end
-    warmup_solve(config, prob, bc_order, run_dir, solver, cg_precond)
+    warmup_solve(config, prob, bc_order, lap_order, run_dir, solver, cg_precond)
     sol, runtime = if solver === :taylor
         correction_mode = (mg_correction == "correction-taylor") ? :correction_taylor : :classic
-        solve_with_runtime(config, prob; bc_order=bc_order, output_dir=run_dir,
+        solve_with_runtime(config, prob; bc_order=bc_order, lap_order=lap_order, output_dir=run_dir,
                            mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M,
                            mg_vcycle=mg_vcycle, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
                            mg_level_Ms=(use_hierarchical_taylor ? mg_level_Ms : nothing),

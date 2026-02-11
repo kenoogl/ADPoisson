@@ -50,12 +50,13 @@
   - `TaylorBuffers3D` を用いた逐次係数生成
   - depends: [5a, 5b]
   - _Requirements: メモリ効率_
-- [x] 6. 境界条件の実装 (`src/boundary.jl`) (P)
+- [x] 6. 境界条件の実装（現行実装, legacy） (`src/boundary.jl`) (P)
   - `apply_bc!(u, bc, m, config)`
-  - Dirichlet条件 (ghost cell更新) の実装
+  - Dirichlet条件 (ghost 1層更新) の実装
   - ghost更新は面のみ（エッジ・コーナーは更新しない）
-  - 高次境界（任意, m=0 のみ、`nx,ny,nz>=4` が条件）
-  - _Requirements: 領域・境界条件, Taylor級数漸化式_
+  - 高次境界（任意, `order=:high`）は `m=0` のみ 3次外挿
+  - **注意**: ghost 2層 + 4次境界への移行は Task 25 で実施する
+  - _Requirements: （legacy実装 - 新仕様 ghost 2層 は Task 25 で対応）_
 - [x] 7. factory.jl の実装 (`src/factory.jl`)
   - `make_problem(config, alpha)` 等のヘルパーを実装
   - `boundary_from_prob(prob)` を利用して `BoundaryConditions` を生成
@@ -80,7 +81,7 @@
   - _Requirements: Julia実装-可視化_
 - [x] 10. CLIと実行スクリプト (`scripts/main.jl`)
   - コマンドライン引数処理
-  - `--nx --ny --nz --M --dt --Fo --max-steps --epsilon --alpha --bc-order --output-dir` に対応
+  - `--nx --ny --nz --M --dt --Fo --max-steps --epsilon --alpha --bc-order --lap-order --output-dir` に対応
   - `factory.jl` を利用して問題生成
   - depends: [7, 8]
   - _Requirements: Julia実装-パラメータ_
@@ -153,7 +154,7 @@
   - _Design: マルチグリッド的加速_
 - [x] 18. レベル3（V-cycle MG）の実装 (`src/mg.jl`)
   - 再帰 V-cycle（最粗格子で直接解法）
-  - 誤差方程式 $Le=r$ を解く場合は coarse でゼロ Dirichlet 境界を適用
+  - 誤差方程式 $Le=-r$ を解く場合は coarse でゼロ Dirichlet 境界を適用
   - レベル依存で $\Delta t$ / $M$ を変更可能
   - depends: [5a, 6, 8]
   - _Requirements: 加速（マルチグリッド的アプローチ）_
@@ -189,7 +190,7 @@
   - depends: [21]
   - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
   - _Design: 補正方程式の Taylor 化（Correction-Taylor）_
-- [x] 23. Correction-Taylor テスト (`test/mg.jl`)
+- [ ] 23. Correction-Taylor テスト (`test/mg.jl`)
   - `classic` 比較で coarse 補正後に残差低減することを確認
   - 境界条件（ゼロ Dirichlet）適用時に NaN/発散しないことを確認
   - depends: [21, 22]
@@ -205,3 +206,41 @@
   - depends: [18]
   - _Requirements: MGバッファ再利用_
   - _Design: MGワークスペース（バッファ再利用）_
+
+## Phase 6: ghost 2層仕様への移行
+> 仕様更新（ghost 2層, 高次境界4次）を現実装へ反映するフェーズ
+- [ ] 25. 境界条件の ghost 2層化 (`src/boundary.jl`)
+  - `order=:spec` で ghost1/ghost2 の 2次式（`2g-u_adj1`, `2g-u_adj2`）を実装
+  - `order=:high` で ghost 2層の 4次式を実装（x/y/z 全面）
+  - 係数配列は `m=0` に境界値、`m>=1` は同次式を適用
+  - `nx,ny,nz>=4` 未満は `order=:spec` にフォールバック
+  - depends: [6]
+  - _Requirements: Taylor級数漸化式（ghost 2層境界式）_
+  - _Design: Ghost Cell更新 (`boundary.jl`)_
+- [ ] 26. コア配列・インデクスの ghost 2層対応 (`src/core.jl`, `src/mg.jl`, `src/cg.jl`)
+  - 配列サイズを `(nx+4, ny+4, nz+4)` に更新
+  - 内点ループを `3:n+2` へ更新（残差, Taylor 係数, 補間/制限を含む）
+  - ghost を含む添字規約の整合を全ソルバーで確認
+  - `--lap-order fourth` の実行時エラー guard を解除し、ghost 2層配列で実行可能にする
+  - depends: [25]
+  - _Requirements: 計算格子, Taylor級数漸化式_
+  - _Design: データモデル, コアアルゴリズム_
+- [ ] 27. ghost 2層向けテスト更新 (`test/core.jl`, `test/mg.jl`)
+  - 境界適用テストを ghost 2層式に更新
+  - `order=:high` の `m=0`/`m>=1` の両方を検証
+  - 既存収束テストが新添字規約で通ることを確認
+  - `--lap-order fourth` の統合テスト（CLI経由）を追加
+  - depends: [25, 26]
+  - _Requirements: 検証機能_
+  - _Design: テスト戦略_
+
+## Phase 7: 4次ラプラシアン（暫定）
+- [x] 28. 4次ラプラシアン核と `--lap-order` 配線（暫定） (`src/core.jl`, `scripts/main.jl`, `test/core.jl`)
+  - `laplacian!` に `order=:second|:fourth` を追加し、`laplacian4!`（半径2）を実装
+  - `--lap-order second|fourth` を CLI に追加し、`run_config.toml` へ `lap_order` を保存
+  - `taylor_step!` / 残差計算に `lap_order` を配線
+  - 4次ラプラシアン単体テスト（収束次数）を追加
+  - 現行（ghost 1層）では `--lap-order fourth` を実行時エラーとしてガード
+  - depends: [5a, 10, 11]
+  - _Requirements: 三次元ポアソン方程式ソルバー, Julia実装-パラメータ_
+  - _Design: 関数シグネチャ, CLI引数（scripts/main.jl）_
