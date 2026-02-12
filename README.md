@@ -58,6 +58,9 @@ julia --project scripts/main.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsi
 - `--alpha`: 境界条件パラメータ（デフォルト: 1.0）
 - `--bc-order`: 境界条件の次数（`spec` または `high`、デフォルト: `spec`）
   - Taylor 系（`taylor` / `mg-*`）のみ有効（反復解法では `spec` に固定）
+- `--lap-order`: ラプラシアン次数（`second` または `fourth`、デフォルト: `second`）
+  - Taylor 系（`taylor` / `mg-*`）のみ有効（反復解法では `second` に固定）
+  - `fourth` は 4次差分（半径2、各軸5点）を使用
 - `--output-dir`: 出力ディレクトリ（デフォルト: `results`。存在しない場合は作成）
 - `--solver`: 実行するソルバー（`taylor` / `sor` / `ssor` / `cg` / `mg-uniform-taylor` / `mg-hierarchical-taylor` / `mg-correction-taylor`。デフォルト: `taylor`）
 - `--cg-precond`: CG の前処理（`ssor` / `none`、デフォルト: `none`）

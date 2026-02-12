@@ -295,14 +295,16 @@ function direct_solve_poisson!(u::Array{T,3}, f::Array{T,3},
     b = ws.coarse_b::Vector{T}
     x = ws.coarse_x::Vector{T}
     stride_xy = nx * ny
+    gux, guy, guz = ghost_layers(u, config)
+    gfx, gfy, gfz = ghost_layers(f, config)
     @inbounds for k in 1:nz, j in 1:ny, i in 1:nx
         idx = i + (j - 1) * nx + (k - 1) * stride_xy
-        b[idx] = f[i + 1, j + 1, k + 1]
+        b[idx] = f[i + gfx, j + gfy, k + gfz]
     end
     ldiv!(x, ws.coarse_fact, b)
     @inbounds for k in 1:nz, j in 1:ny, i in 1:nx
         idx = i + (j - 1) * nx + (k - 1) * stride_xy
-        u[i + 1, j + 1, k + 1] = x[idx]
+        u[i + gux, j + guy, k + guz] = x[idx]
     end
     return u
 end
