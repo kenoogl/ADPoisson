@@ -192,7 +192,7 @@ CG 実行前に前提を満たすことを確認する。
   - 前進 R→B、後退 B→R、前進 B→R、後退 R→B（R=red, B=black）
   - 緩和係数 $\omega=1.0$ を固定（将来変更可能な形で実装）
 - 収束判定・履歴出力は SOR と同じ基準
-- 出力は `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` に記録する
+- 出力は実験ごとの `results/<exp>/` 配下に保存し、`run_config.toml` / `run_summary.toml` に記録する（上書き）
 - 履歴ファイル命名: `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 - 反復ループ（内点更新）は `if` 分岐なしで構成する
 
@@ -419,8 +419,8 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 ### 4. 可視化 (`src/visualization.jl`)
 結果 `Solution` を受け取り、指定された断面 ($y=0.5$等) の分布図と誤差図を描画し、PNG保存する。
 解析解の断面図も保存する（同一解像度なら同一になるため格子情報のみ付与）。
-出力先は `output_dir` で指定し、デフォルトは `results/` とする。実行ごとに `run_YYYYMMDD_HHMMSS/` を作成し、その配下に保存する。
-実行条件と結果は `run_config.toml` / `run_summary.toml` に記録する。
+出力先は実験単位の固定ディレクトリ（`results/<exp>/`）とし、同一実験名では上書きする。
+実行条件と結果は `run_config.toml` / `run_summary.toml` に記録する（上書き）。
 命名は以下を基本とする。
 - `exact_nx{nx}_ny{ny}_nz{nz}.png`
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
@@ -450,6 +450,13 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 - MG関連（`--solver mg-*` の場合）: `--mg-interval,--mg-dt-scale,--mg-M,--mg-nu1,--mg-nu2,--mg-level-Ms,--mg-level-dt-scales`
 - Correction-Taylor（`--solver mg-correction-taylor` の場合）: `--mg-corr-M,--mg-corr-dt-scale,--mg-corr-steps,--mg-corr-nu1,--mg-corr-nu2`
 - `mg_M` / `mg_dt_scale` のデフォルトは requirements.md に準拠（`mg_M=4`, `mg_dt_scale=2.0`）
+
+## 実験実行（bin/run_exp, config駆動）
+- `run_exp` は `experiments/<exp>/config.yaml` を読み、`execution.command` を実行する。
+- `execution.command` は **`--config experiments/<exp>/config.yaml` の参照のみ**を許可する。
+- `execution.command` に 必要以外の実行パラメータが含まれる場合は、エラー終了する。
+- `run_exp` のメタデータは `logs/<exp>.json` に保存し、同一実験名で上書きする。
+- `scripts/main.jl` は `--config` 入力から実行設定を復元し、`run_config.toml` に `config_path` と実効設定を保存する。
 
 ## エラーハンドリング
 - パラメータチェック: $N_x, N_y, N_z > 0$, $M \ge 1$ 等。

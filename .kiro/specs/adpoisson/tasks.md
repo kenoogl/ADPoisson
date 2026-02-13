@@ -68,7 +68,7 @@
   - 時間ステップループ、収束判定 ($r=Lu-f$ 相対残差)
   - `compute_residual!` 実装（内点のみ）
   - 相対残差 $\|r\|_2 / \max(\|r_0\|_2, 1)$ を採用
-  - 擬似時間ステップ履歴を `run_YYYYMMDD_HHMMSS/` 配下に保存（`history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`）
+  - 擬似時間ステップ履歴を `results/<exp>/` 配下に保存（`history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`）
   - 拡散数 $Fo$ の推奨条件チェック（警告）
   - depends: [5a, 5b, 5c, 6]
   - _Requirements: ソルバー, 時間積分手法_
@@ -125,7 +125,7 @@
 - [x] 14. 収束性の比較
   - 擬似時間法（Taylor）と SOR/CG の収束履歴を同一指標で比較
   - 例題は共通の検証問題を使用
-  - 比較結果を `run_YYYYMMDD_HHMMSS/` に保存
+  - 比較結果を `results/<exp>/` に保存
   - depends: [8, 12, 13]
   - _Requirements: 検証機能_
   - _Design: 比較スクリプト_
@@ -244,3 +244,31 @@
   - depends: [5a, 10, 11]
   - _Requirements: 三次元ポアソン方程式ソルバー, Julia実装-パラメータ_
   - _Design: 関数シグネチャ, CLI引数（scripts/main.jl）_
+
+## Phase 8: 実験実行のconfig駆動化（旧形式エラー化）
+> `execution.command` は config 参照のみを許可し、旧形式をエラー化する
+- [ ] 29. `execution.command` の固定化（テンプレート更新） (`framework/templates/config_core.yaml`)
+  - `execution.command` を `julia --project=. src/main.jl --config experiments/<exp>/config.yaml` 形式に統一
+  - 実行パラメータ直書きのテンプレートを廃止
+  - _Requirements: 実験実行構成（run_exp / config駆動）_
+  - _Design: 実験実行（bin/run_exp, config駆動）_
+- [ ] 30. `run_exp` の旧形式エラー化 (`bin/run_exp`)
+  - `execution.command` に `--config experiments/<exp>/config.yaml` が無い場合はエラー
+  - `execution.command` に `--n`, `--Fo`, `--M`, `--mg-*`, `--alpha` 等の実行パラメータが含まれる場合はエラー
+  - `logs/<exp>.json` 上書き運用を維持
+  - depends: [29]
+  - _Requirements: 実験実行構成（run_exp / config駆動）_
+  - _Design: 実験実行（bin/run_exp, config駆動）_
+- [ ] 31. `scripts/main.jl` の `--config` 対応強化 (`scripts/main.jl`)
+  - `--config` から実行設定を読み込む経路を正式実装
+  - 実効設定を `run_config.toml` に保存（`config_path` を含む）
+  - depends: [29]
+  - _Requirements: 実験実行構成（run_exp / config駆動）_
+  - _Design: 実験実行（bin/run_exp, config駆動）_
+- [ ] 32. config駆動実行のテスト (`test/cli.jl`, `framework/templates/project/bin/run_exp`)
+  - 正常系: config参照型 command で実行できる
+  - 異常系: 旧形式 command（パラメータ直書き）をエラーにする
+  - 異常系: `--config` の実験名不一致をエラーにする
+  - depends: [30, 31]
+  - _Requirements: 実験実行構成（run_exp / config駆動）_
+  - _Design: テスト戦略_

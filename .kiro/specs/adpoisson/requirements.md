@@ -27,8 +27,8 @@
   - 擬似時間ステップの履歴をファイルに出力する
     - ファイル名: `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
     - 出力列: `step`, `err_l2`, `res_l2`（`res_l2` は初期残差で相対化した残差L2）
-    - 出力先は指定可能（デフォルト: `results/`）。実行ごとに `run_YYYYMMDD_HHMMSS/` を作成し、その配下に保存する
-    - 実行条件と結果を `run_config.toml` / `run_summary.toml` に記録する
+    - 出力先は指定可能（デフォルト: `results/`）。実験単位（`results/<exp>/`）に固定し、同一実験名では上書きする
+    - 実行条件と結果を `run_config.toml` / `run_summary.toml` に記録する（上書き）
       - `run_summary.toml` には最終反復時の `res_l2` を記録する
   - 擬似時間刻みの条件は拡散数で管理する（推奨条件として採用）。拡散数（$\nu=1$）は
     $$Fo=\Delta t\left(\frac{1}{\Delta x^2}+\frac{1}{\Delta y^2}+\frac{1}{\Delta z^2}\right)$$
@@ -118,7 +118,7 @@
       - `run_config.toml` に `mg_correction`, `mg_corr_M`, `mg_corr_dt_scale`, `mg_corr_steps`,
         `mg_corr_nu1`, `mg_corr_nu2` を保存する
   - CG が適用可能であること（係数行列の対称性・正定性）を確認する
-  - 出力は実行ごとの `run_YYYYMMDD_HHMMSS/` 配下に保存し、`run_config.toml` / `run_summary.toml` を記録する
+  - 出力は実験ごとの `results/<exp>/` 配下に保存し、`run_config.toml` / `run_summary.toml` を記録する（上書き）
   - MG の履歴ファイル命名（レベル3のみ）:
     - レベル3: `history_vcycle_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 - [ ] **Taylor級数漸化式（3D Poisson, 擬似時間）**
@@ -212,6 +212,14 @@
     - `fourth` は ghost 2層実装完了まで使用不可（実行時エラー）
   - 可視化は $y=0.5$ の断面（XZ面）をヒートマップ/コンターで表示し、解析解との誤差も可視化（出力先は指定可能）
   - 擬似時間ステップ履歴のファイル出力を行う
+
+## 実験実行構成（run_exp / config駆動）
+- `experiments/<exp>/config.yaml` を実験の単一情報源（single source of truth）とする
+- `execution.command` は **設定参照のみ**とし、実行パラメータを直接埋め込まない
+  - 形式（例）: `julia --project=. src/main.jl --config experiments/<exp>/config.yaml`
+- 実行パラメータ（`n`, `Fo`, `M`, `mg_*`, `alpha` など）は `config.yaml` にのみ記載する
+- 旧形式（`execution.command` に実行パラメータを直書き）は受け付けず、`run_exp` は **エラー終了**する
+- `run_exp` は `logs/<exp>.json` を生成し、同一実験名で上書きする（履歴は Git で管理）
 
 ## 非機能要件
 - [ ] **実装言語**: Julia
