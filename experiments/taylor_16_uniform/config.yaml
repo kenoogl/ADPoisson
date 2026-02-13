@@ -1,0 +1,56 @@
+experiment:
+  name: taylor_16_uniform
+  description: Taylor uniform
+
+problem:
+  equation: poisson
+  dimension: 3
+  domain:
+    type: cartesian
+    size: [1.0, 1.0, 1.0]
+  boundary_condition:
+    type: dirichlet
+    solution: analytic
+
+discretization:
+  grid:
+    nx: 16
+    ny: 16
+    nz: 16
+  layout: cell-centered
+  ghost_cells: 2
+
+solver:
+  method: taylor
+  type: uniform
+
+convergence:
+  residual_norm: L2
+  tolerance: 1.0e-6
+  max_iterations: 5000
+
+output:
+  results_dir: results/taylor_16_uniform
+  save_residual_history: true
+
+run:
+  solver: mg-uniform-taylor
+  n: 16
+  Fo: 0.5
+  M: 4
+  max_steps: 20000
+  epsilon: 1.0e-8
+  alpha: 1.0
+  bc_order: spec
+  mg_interval: 5
+  mg_dt_scale: 2.0
+  mg_M: 2
+  mg_nu1: 1
+  mg_nu2: 1
+  lap_order: second
+  output_dir: results/taylor_16_uniform
+
+execution:
+  command: >
+    julia --project scripts/run_solver.jl
+    --config experiments/taylor_16_uniform/config.yaml

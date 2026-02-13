@@ -4,6 +4,7 @@ using ADPoisson
 using Printf
 using Dates
 using TOML
+using YAML
 
 function last_res_l2(path::AbstractString)
     last = nothing
@@ -86,6 +87,154 @@ function parse_bool(value::AbstractString)
     error("invalid boolean: $(value)")
 end
 
+function dict_get(dict::AbstractDict, key)
+    if haskey(dict, key)
+        return dict[key]
+    end
+    if key isa String && haskey(dict, Symbol(key))
+        return dict[Symbol(key)]
+    end
+    if key isa Symbol && haskey(dict, String(key))
+        return dict[String(key)]
+    end
+    return nothing
+end
+
+function cfg_get(cfg, keys...)
+    v = cfg
+    for key in keys
+        if !(v isa AbstractDict)
+            return nothing
+        end
+        v = dict_get(v, key)
+        if v === nothing
+            return nothing
+        end
+    end
+    return v
+end
+
+function to_int(x)
+    return x isa Integer ? Int(x) : parse(Int, string(x))
+end
+
+function to_float(x)
+    return x isa AbstractFloat ? Float64(x) : parse(Float64, string(x))
+end
+
+function to_string(x)
+    return x isa AbstractString ? String(x) : string(x)
+end
+
+function to_int_list(x)
+    if x isa AbstractVector
+        return [to_int(v) for v in x]
+    end
+    return parse_int_list(to_string(x))
+end
+
+function to_float_list(x)
+    if x isa AbstractVector
+        return [to_float(v) for v in x]
+    end
+    return parse_float_list(to_string(x))
+end
+
+function apply_run_config!(opts, run, seen)
+    for (raw_key, raw_val) in run
+        key = to_string(raw_key)
+        val = raw_val
+        if key == "n" || key == "nx" || key == "ny" || key == "nz" || key == "M" || key == "max_steps"
+            opts[key] = to_int(val)
+        elseif key == "Fo" || key == "dt" || key == "alpha" || key == "epsilon" ||
+               key == "mg_dt_scale" || key == "mg_corr_dt_scale"
+            opts[key] = to_float(val)
+        elseif key == "solver" || key == "cg_precond" || key == "bc_order" || key == "lap_order"
+            opts[key] = lowercase(to_string(val))
+        elseif key == "mg_level_Ms"
+            opts[key] = to_int_list(val)
+        elseif key == "mg_level_dt_scales"
+            opts[key] = to_float_list(val)
+        elseif key == "mg_interval" || key == "mg_M" || key == "mg_nu1" || key == "mg_nu2" ||
+               key == "mg_corr_M" || key == "mg_corr_steps" || key == "mg_corr_nu1" || key == "mg_corr_nu2"
+            opts[key] = to_int(val)
+        elseif key == "output_dir"
+            opts[key] = to_string(val)
+        elseif key == "debug_residual" || key == "debug_vcycle"
+            opts[key] = Bool(val)
+        end
+        push!(seen, key)
+    end
+end
+
+function apply_config!(opts, cfg)
+    seen = Set{String}()
+    run = cfg_get(cfg, "run")
+    if run !== nothing
+        apply_run_config!(opts, run, seen)
+    end
+
+    results_dir = cfg_get(cfg, "output", "results_dir")
+    if results_dir !== nothing && !("output_dir" in seen)
+        opts["output_dir"] = to_string(results_dir)
+    end
+
+    grid = cfg_get(cfg, "discretization", "grid")
+    if grid !== nothing
+        for (k, optkey) in (("nx", "nx"), ("ny", "ny"), ("nz", "nz"))
+            v = dict_get(grid, k)
+            if v !== nothing && !(optkey in seen)
+                opts[optkey] = to_int(v)
+            end
+        end
+    end
+
+    tol = cfg_get(cfg, "convergence", "tolerance")
+    if tol !== nothing && !("epsilon" in seen)
+        opts["epsilon"] = to_float(tol)
+    end
+    maxit = cfg_get(cfg, "convergence", "max_iterations")
+    if maxit !== nothing && !("max_steps" in seen)
+        opts["max_steps"] = to_int(maxit)
+    end
+
+    solver_cfg = cfg_get(cfg, "solver")
+    if solver_cfg !== nothing
+        method = dict_get(solver_cfg, "method")
+        stype = dict_get(solver_cfg, "type")
+        if method !== nothing && !("solver" in seen)
+            m = lowercase(to_string(method))
+            t = stype === nothing ? "" : lowercase(to_string(stype))
+            if m == "taylor"
+                if t == "uniform"
+                    opts["solver"] = "mg-uniform-taylor"
+                elseif t == "hierarchical"
+                    opts["solver"] = "mg-hierarchical-taylor"
+                elseif t == "correction-taylor" || t == "correction"
+                    opts["solver"] = "mg-correction-taylor"
+                else
+                    opts["solver"] = "taylor"
+                end
+            else
+                opts["solver"] = m
+            end
+        end
+        if dict_get(solver_cfg, "Fo") !== nothing && !("Fo" in seen)
+            opts["Fo"] = to_float(dict_get(solver_cfg, "Fo"))
+        end
+        if dict_get(solver_cfg, "dt") !== nothing && !("dt" in seen)
+            opts["dt"] = to_float(dict_get(solver_cfg, "dt"))
+        end
+        if dict_get(solver_cfg, "M") !== nothing && !("M" in seen)
+            opts["M"] = to_int(dict_get(solver_cfg, "M"))
+        end
+        smoother = cfg_get(solver_cfg, "smoother", "type")
+        if smoother !== nothing && !("cg_precond" in seen)
+            opts["cg_precond"] = lowercase(to_string(smoother))
+        end
+    end
+end
+
 function mg_levels_and_coarsest(config::SolverConfig)
     levels = ADPoisson.mg_max_levels(config; min_n=4)
     cx = config.nx
@@ -101,6 +250,7 @@ end
 
 function parse_args(args)
     opts = default_cli_options()
+    opts["config_path"] = nothing
     opts["output_dir"] = "results"
     opts["Fo"] = nothing
     opts["mg_interval"] = 0
@@ -118,10 +268,39 @@ function parse_args(args)
     opts["debug_residual"] = false
     opts["debug_vcycle"] = false
 
+    config_path = nothing
+    i = 1
+    while i <= length(args)
+        if args[i] == "--config"
+            if i == length(args)
+                error("Missing value for --config")
+            end
+            config_path = args[i + 1]
+            i += 2
+        elseif startswith(args[i], "--config=")
+            config_path = split(args[i], "=", limit=2)[2]
+            i += 1
+        else
+            i += 1
+        end
+    end
+    if config_path !== nothing
+        cfg = YAML.load_file(config_path)
+        apply_config!(opts, cfg)
+        opts["config_path"] = config_path
+    end
+
     i = 1
     while i <= length(args)
         if startswith(args[i], "--")
             key = args[i][3:end]
+            if key == "config"
+                i += 2
+                continue
+            elseif startswith(key, "config=")
+                i += 1
+                continue
+            end
             if i == length(args)
                 error("Missing value for --$key")
             end
@@ -323,7 +502,7 @@ function main()
     @printf("  run_dir=%s\n", run_dir)
     run_config = Dict(
         "timestamp" => Dates.format(now(), dateformat"yyyy-mm-ddTHH:MM:SSzzzz"),
-        "script" => "scripts/main.jl",
+        "script" => "scripts/run_solver.jl",
         "output_dir" => output_dir,
         "run_dir" => run_dir,
         "nx" => config.nx,
@@ -337,6 +516,9 @@ function main()
         "solver" => solver_mode,
         "warmup" => true,
     )
+    if opts["config_path"] !== nothing
+        run_config["config_path"] = opts["config_path"]
+    end
     if solver === :taylor
         run_config["M"] = config.M
         run_config["dt"] = config.dt

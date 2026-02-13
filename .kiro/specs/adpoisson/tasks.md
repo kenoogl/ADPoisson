@@ -79,7 +79,7 @@
   - 保存の命名規則: `exact_nx{nx}_ny{ny}_nz{nz}.png`, `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
   - depends: [8]
   - _Requirements: Julia実装-可視化_
-- [x] 10. CLIと実行スクリプト (`scripts/main.jl`)
+- [x] 10. CLIと実行スクリプト (`scripts/run_solver.jl`)
   - コマンドライン引数処理
   - `--nx --ny --nz --M --dt --Fo --max-steps --epsilon --alpha --bc-order --lap-order --output-dir` に対応
   - `factory.jl` を利用して問題生成
@@ -138,14 +138,14 @@
 
 ## Phase 5: マルチグリッド的加速（検討）
 > Phase 3 完了後に開始
-- [ ] 16. レベル1（疑似MG）の実装 (`src/mg.jl`)（不採用）
+- [x] 16. レベル1（疑似MG）の実装 (`src/mg.jl`)（不採用）
   - 残差 $r=Lu-f$ を用いた補正ステップを実装
   - 補正ステップも Fo クリップを適用
   - 実験済みで不採用のため実装対象外
   - depends: [5a, 6, 8]
   - _Requirements: 加速（マルチグリッド的アプローチ）_
   - _Design: マルチグリッド的加速_
-- [ ] 17. レベル2（2-level MG）の実装 (`src/mg.jl`)（不採用）
+- [x] 17. レベル2（2-level MG）の実装 (`src/mg.jl`)（不採用）
   - coarse grid の生成（$N/2$）と $R/P$ の実装
   - coarse 境界値は boundary function から直接評価
   - 実験済みで不採用のため実装対象外
@@ -167,7 +167,7 @@
   - depends: [18]
   - _Requirements: 階層 Taylor（Level-dependent Taylor）_
   - _Design: 階層 Taylor（Level-dependent Taylor）_
-- [ ] 20. Phase 5 テスト (`test/mg.jl`)（不採用）
+- [x] 20. Phase 5 テスト (`test/mg.jl`)（不採用）
   - レベル1: 補正後に残差が減少することを確認
   - レベル2: 2-level MG で収束を確認
   - 実験済みで不採用のため実施対象外
@@ -182,7 +182,7 @@
   - depends: [18]
   - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
   - _Design: 補正方程式の Taylor 化（Correction-Taylor）_
-- [x] 22. CLI/設定追加 (`scripts/main.jl`)
+- [x] 22. CLI/設定追加 (`scripts/run_solver.jl`)
   - `--solver mg-correction-taylor` と `--mg-corr-M`, `--mg-corr-dt-scale`, `--mg-corr-steps` を追加
   - **補正方程式（e）側**の pre/post 個別指定として `--mg-corr-nu1`, `--mg-corr-nu2` を追加
   - `run_config.toml` へ `mg_correction`, `mg_corr_M`, `mg_corr_dt_scale`, `mg_corr_steps`,
@@ -235,7 +235,7 @@
   - _Design: テスト戦略_
 
 ## Phase 7: 4次ラプラシアン（暫定）
-- [x] 28. 4次ラプラシアン核と `--lap-order` 配線（暫定） (`src/core.jl`, `scripts/main.jl`, `test/core.jl`)
+- [x] 28. 4次ラプラシアン核と `--lap-order` 配線（暫定） (`src/core.jl`, `scripts/run_solver.jl`, `test/core.jl`)
   - `laplacian!` に `order=:second|:fourth` を追加し、`laplacian4!`（半径2）を実装
   - `--lap-order second|fourth` を CLI に追加し、`run_config.toml` へ `lap_order` を保存
   - `taylor_step!` / 残差計算に `lap_order` を配線
@@ -243,29 +243,29 @@
   - 現行（ghost 1層）では `--lap-order fourth` を実行時エラーとしてガード
   - depends: [5a, 10, 11]
   - _Requirements: 三次元ポアソン方程式ソルバー, Julia実装-パラメータ_
-  - _Design: 関数シグネチャ, CLI引数（scripts/main.jl）_
+  - _Design: 関数シグネチャ, CLI引数（scripts/run_solver.jl）_
 
 ## Phase 8: 実験実行のconfig駆動化（旧形式エラー化）
 > `execution.command` は config 参照のみを許可し、旧形式をエラー化する
-- [ ] 29. `execution.command` の固定化（テンプレート更新） (`framework/templates/config_core.yaml`)
+- [x] 29. `execution.command` の固定化（テンプレート更新） (`framework/templates/config_core.yaml`)
   - `execution.command` を `julia --project=. src/main.jl --config experiments/<exp>/config.yaml` 形式に統一
   - 実行パラメータ直書きのテンプレートを廃止
   - _Requirements: 実験実行構成（run_exp / config駆動）_
   - _Design: 実験実行（bin/run_exp, config駆動）_
-- [ ] 30. `run_exp` の旧形式エラー化 (`bin/run_exp`)
+- [x] 30. `run_exp` の旧形式エラー化 (`bin/run_exp`)
   - `execution.command` に `--config experiments/<exp>/config.yaml` が無い場合はエラー
   - `execution.command` に `--n`, `--Fo`, `--M`, `--mg-*`, `--alpha` 等の実行パラメータが含まれる場合はエラー
   - `logs/<exp>.json` 上書き運用を維持
   - depends: [29]
   - _Requirements: 実験実行構成（run_exp / config駆動）_
   - _Design: 実験実行（bin/run_exp, config駆動）_
-- [ ] 31. `scripts/main.jl` の `--config` 対応強化 (`scripts/main.jl`)
+- [x] 31. `scripts/run_solver.jl` の `--config` 対応強化 (`scripts/run_solver.jl`)
   - `--config` から実行設定を読み込む経路を正式実装
   - 実効設定を `run_config.toml` に保存（`config_path` を含む）
   - depends: [29]
   - _Requirements: 実験実行構成（run_exp / config駆動）_
   - _Design: 実験実行（bin/run_exp, config駆動）_
-- [ ] 32. config駆動実行のテスト (`test/cli.jl`, `framework/templates/project/bin/run_exp`)
+- [x] 32. config駆動実行のテスト (`test/cli.jl`, `framework/templates/project/bin/run_exp`)
   - 正常系: config参照型 command で実行できる
   - 異常系: 旧形式 command（パラメータ直書き）をエラーにする
   - 異常系: `--config` の実験名不一致をエラーにする

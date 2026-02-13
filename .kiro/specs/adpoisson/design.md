@@ -439,8 +439,8 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
   - `x,y,z` は内点のみの長さ `nx,ny,nz` を持つ（ghostは保持しない）
   - `make_grid` の戻り値も内点のみとする
 
-## CLI引数（scripts/main.jl）
-- 形式: `julia scripts/main.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --Fo=0.3 --max-steps=10000 --epsilon=1e-10 --alpha=1.0 --bc-order high --output-dir results`
+## CLI引数（scripts/run_solver.jl）
+- 形式: `julia scripts/run_solver.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --Fo=0.3 --max-steps=10000 --epsilon=1e-10 --alpha=1.0 --bc-order high --output-dir results`
 - 必須: `--nx,--ny,--nz`
 - 任意: `--M,--dt,--Fo,--max-steps,--epsilon,--alpha,--bc-order,--lap-order,--output-dir`（`--Fo` があれば `--dt` より優先、デフォルトは requirements.md に準拠）
 - ソルバー指定: `--solver taylor|sor|ssor|cg|mg-uniform-taylor|mg-hierarchical-taylor|mg-correction-taylor`
@@ -456,7 +456,7 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 - `execution.command` は **`--config experiments/<exp>/config.yaml` の参照のみ**を許可する。
 - `execution.command` に 必要以外の実行パラメータが含まれる場合は、エラー終了する。
 - `run_exp` のメタデータは `logs/<exp>.json` に保存し、同一実験名で上書きする。
-- `scripts/main.jl` は `--config` 入力から実行設定を復元し、`run_config.toml` に `config_path` と実効設定を保存する。
+- `scripts/run_solver.jl` は `--config` 入力から実行設定を復元し、`run_config.toml` に `config_path` と実効設定を保存する。
 
 ## エラーハンドリング
 - パラメータチェック: $N_x, N_y, N_z > 0$, $M \ge 1$ 等。

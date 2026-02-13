@@ -38,9 +38,9 @@ julia --project -e 'using Pkg; Pkg.instantiate()'
 
 ### **実行**
 ```bash
-julia --project scripts/main.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-10 --alpha 1.0 --output-dir results
+julia --project scripts/run_solver.jl --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-10 --alpha 1.0 --output-dir results
 
-julia --project scripts/main.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-10 --alpha 1.0 --output-dir results --solver taylor
+julia --project scripts/run_solver.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-10 --alpha 1.0 --output-dir results --solver taylor
 ```
 
 終了時に `Fo`、解析解との **L2誤差（絶対値）**、**最大誤差**、ステップ数、実行時間をまとめて出力します。`Fo > 0.5` の場合は警告を表示します。
@@ -117,25 +117,25 @@ julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); max_steps=Int(ceil(0.5
 
 **CG 実行例**
 ```bash
-julia --project scripts/main.jl --solver cg --cg-precond ssor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
+julia --project scripts/run_solver.jl --solver cg --cg-precond ssor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
 ```
 
 **反復解法（SOR）実行例**
 ```bash
-julia --project scripts/main.jl --solver sor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
+julia --project scripts/run_solver.jl --solver sor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
 ```
 
 **Uniform Taylor (V-cycle MG) 実行例**
 ```bash
-julia --project scripts/main.jl --solver mg-uniform-taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
+julia --project scripts/run_solver.jl --solver mg-uniform-taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
 ```
 **Hierarchical Taylor (V-cycle MG) 実行例**
 ```bash
-julia --project scripts/main.jl --solver mg-hierarchical-taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --mg-level-Ms 4,4,2,2 --mg-level-dt-scales 2.0,2.0,4.0,4.0 --output-dir results
+julia --project scripts/run_solver.jl --solver mg-hierarchical-taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --mg-level-Ms 4,4,2,2 --mg-level-dt-scales 2.0,2.0,4.0,4.0 --output-dir results
 ```
 **Correction-Taylor (V-cycle MG) 実行例**
 ```bash
-julia --project scripts/main.jl --solver mg-correction-taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-corr-M 2 --mg-corr-dt-scale 1.0 --mg-corr-nu1 1 --mg-corr-nu2 1 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
+julia --project scripts/run_solver.jl --solver mg-correction-taylor --n 64 --Fo 0.5 --M 4 --max-steps 20000 --epsilon 1e-8 --alpha 1.0 --bc-order high --mg-corr-M 2 --mg-corr-dt-scale 1.0 --mg-corr-nu1 1 --mg-corr-nu2 1 --mg-interval 5 --mg-dt-scale 2.0 --mg-M 4 --mg-nu1 1 --mg-nu2 1 --output-dir results
 ```
 補足:
 - V-cycle は `--mg-interval` ごとに適用されます（`0` で無効）。
@@ -150,7 +150,7 @@ julia --project -e 'using Pkg; Pkg.test()'
 
 デフォルトのテストは **問題を解いて精度確認** のみを実行します。
 （`solver_error` で擬似時間ソルバを実行し、解析解との相対 L2 誤差を評価）
-テストで使用する `dt` と `max_steps` は `scripts/main.jl` のデフォルト値に一致します。
+テストで使用する `dt` と `max_steps` は `scripts/run_solver.jl` のデフォルト値に一致します。
 ただし **フルテスト（N=64）を安定に通すため、テストでは `dt` を上限 `0.5/(3 n^2)` で安全側にクリップ**します（デフォルト有効）。
 実行時と同じ `dt` を強制する場合は以下を使います。
 ```bash
