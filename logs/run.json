@@ -1,7 +1,0 @@
-{
-  "timestamp": "2026-02-10T09:45:49+09:00",
-  "git_commit": "4a8c1bc",
-  "git_dirty": "true",
-  "config": "experiments/foo/config.yaml",
-  "output": "results/foo"
-}

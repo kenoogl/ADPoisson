@@ -1,25 +1,162 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-EXP_NAME="$1"
+# ============================================
+# 依存チェック
+# ============================================
+if ! command -v yq >/dev/null 2>&1; then
+  echo "[ERROR] yq がインストールされていません。"
+  echo "インストール方法:"
+  echo "  macOS: brew install yq"
+  echo "  Ubuntu: sudo snap install yq"
+  exit 1
+fi
+
+REQUIRED_YQ_MAJOR=4
+INSTALLED_YQ_MAJOR=$(yq --version | awk '{print $NF}' | sed -E 's/^v//' | cut -d. -f1)
+
+if ! [[ "$INSTALLED_YQ_MAJOR" =~ ^[0-9]+$ ]]; then
+  echo "[ERROR] yq バージョンの解析に失敗しました: $(yq --version)"
+  exit 1
+fi
+
+if [ "$INSTALLED_YQ_MAJOR" -lt "$REQUIRED_YQ_MAJOR" ]; then
+  echo "[ERROR] yq v4 以上が必要です"
+  exit 1
+fi
+
+
+# ============================================
+# 0. 引数
+# ============================================
+EXP_NAME="${1:-}"
+
+if [ -z "$EXP_NAME" ]; then
+  echo "Usage: ./framework/bin/run_exp <experiment_name>" >&2
+  exit 1
+fi
+
 CONFIG="experiments/${EXP_NAME}/config.yaml"
+
+if [ ! -f "$CONFIG" ]; then
+  echo "[ERROR] Config not found: $CONFIG" >&2
+  exit 1
+fi
+
+# ============================================
+# 1. YAML読み取り（yq 必須）
+# ============================================
+if ! command -v yq >/dev/null 2>&1; then
+  echo "[ERROR] yq is required" >&2
+  exit 1
+fi
+
+NAME_IN_CONFIG=$(yq -r '.experiment.name' "$CONFIG")
+RESULTS_IN_CONFIG=$(yq -r '.output.results_dir' "$CONFIG")
+EXEC_CMD=$(yq -r '.execution.command' "$CONFIG")
+
+# ============================================
+# 2. 整合チェック
+# ============================================
+
+if [ "$NAME_IN_CONFIG" != "$EXP_NAME" ]; then
+  echo "[ERROR] experiment.name mismatch"
+  echo "  directory: $EXP_NAME"
+  echo "  config:    $NAME_IN_CONFIG"
+  exit 1
+fi
+
+EXPECTED_RESULTS="results/${EXP_NAME}"
+
+if [ "$RESULTS_IN_CONFIG" != "$EXPECTED_RESULTS" ]; then
+  echo "[ERROR] output.results_dir mismatch"
+  echo "  expected: $EXPECTED_RESULTS"
+  echo "  config:   $RESULTS_IN_CONFIG"
+  exit 1
+fi
+
+if [ -z "$EXEC_CMD" ] || [ "$EXEC_CMD" = "null" ]; then
+  echo "[ERROR] execution.command not defined" >&2
+  exit 1
+fi
+
+if ! echo "$EXEC_CMD" | grep -q "results/${EXP_NAME}"; then
+  echo "[ERROR] execution.command does not reference its own results directory" >&2
+  exit 1
+fi
+
+# ============================================
+# 3. 出力ディレクトリ作成
+# ============================================
 OUTDIR="results/${EXP_NAME}"
 LOGDIR="logs"
-META="${LOGDIR}/run.json"
+RUN_JSON="${LOGDIR}/${EXP_NAME}.json"
 
-mkdir -p "${OUTDIR}" "${LOGDIR}"
+mkdir -p "$OUTDIR" "$LOGDIR"
 
-GIT_COMMIT=$(git rev-parse --short HEAD)
-GIT_DIRTY=$(git diff --quiet || echo true)
+# ============================================
+# 4. Git情報（project）
+# ============================================
+PROJECT_COMMIT=$(git rev-parse --short HEAD)
+if git diff --quiet && git diff --cached --quiet; then
+  PROJECT_DIRTY=false
+else
+  PROJECT_DIRTY=true
+  echo "[WARNING] Project repo dirty=true"
+fi
 
-cat <<EOF > "${META}"
+# ============================================
+# 5. Git情報（framework submodule）
+# ============================================
+FRAMEWORK_COMMIT="none"
+FRAMEWORK_DIRTY="none"
+
+if [ -d "framework/.git" ]; then
+  FRAMEWORK_COMMIT=$(git -C framework rev-parse --short HEAD)
+  if git -C framework diff --quiet && git -C framework diff --cached --quiet; then
+    FRAMEWORK_DIRTY=false
+  else
+    FRAMEWORK_DIRTY=true
+    echo "[WARNING] Framework repo dirty=true"
+  fi
+fi
+
+# ============================================
+# 6. run.json 出力
+# ============================================
+cat <<EOF > "$RUN_JSON"
 {
+  "run_id": "${EXP_NAME}",
+  "note": "This file is overwritten on each run. Git history stores past executions.",
   "timestamp": "$(date -Iseconds)",
-  "git_commit": "${GIT_COMMIT}",
-  "git_dirty": "${GIT_DIRTY}",
-  "config": "${CONFIG}",
-  "output": "${OUTDIR}"
+  "project": {
+    "commit": "${PROJECT_COMMIT}",
+    "dirty": ${PROJECT_DIRTY}
+  },
+  "framework": {
+    "commit": "${FRAMEWORK_COMMIT}",
+    "dirty": ${FRAMEWORK_DIRTY}
+  },
+  "execution": {
+    "entrypoint": "./framework/bin/run_exp",
+    "command": "$(printf '%s' "$EXEC_CMD" | sed 's/"/\\"/g')"
+  },
+  "inputs": {
+    "config": "${CONFIG}"
+  },
+  "outputs": {
+    "results_dir": "${OUTDIR}"
+  }
 }
 EOF
 
-echo "[run_exp] run.json written"
+echo "[run_exp] run metadata written: ${RUN_JSON}"
+
+# ============================================
+# 7. 実行
+# ============================================
+echo "[run_exp] Executing:"
+echo "$EXEC_CMD"
+bash -c "$EXEC_CMD"
+
+echo "[run_exp] Experiment completed: ${EXP_NAME}"

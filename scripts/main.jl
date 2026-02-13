@@ -32,15 +32,7 @@ end
 
 function make_run_dir(output_dir; prefix="run")
     mkpath(output_dir)
-    ts = Dates.format(now(), dateformat"yyyymmdd_HHMMSS")
-    run_dir = joinpath(output_dir, "$(prefix)_$(ts)")
-    i = 1
-    while isdir(run_dir)
-        run_dir = joinpath(output_dir, "$(prefix)_$(ts)_$(i)")
-        i += 1
-    end
-    mkpath(run_dir)
-    return run_dir
+    return output_dir
 end
 
 function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol,
