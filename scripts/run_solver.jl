@@ -77,6 +77,55 @@ function parse_float_list(value::AbstractString)
     return isempty(vals) ? nothing : vals
 end
 
+function toml_scalar(v)
+    if v === nothing
+        return "\"\""
+    elseif v isa AbstractString
+        s = replace(v, "\\" => "\\\\", "\"" => "\\\"")
+        return "\"$(s)\""
+    elseif v isa Bool
+        return v ? "true" : "false"
+    elseif v isa Integer
+        return string(v)
+    elseif v isa AbstractFloat
+        if isnan(v)
+            return "nan"
+        elseif isinf(v)
+            return signbit(v) ? "-inf" : "inf"
+        end
+        return repr(v)
+    elseif v isa Tuple || v isa AbstractVector
+        return "[" * join((toml_scalar(x) for x in v), ", ") * "]"
+    end
+    return toml_scalar(string(v))
+end
+
+function write_run_summary(path::AbstractString; steps, runtime_s, res_l2, err_l2, err_max,
+                           history_file, error_plot, exact_plot,
+                           mg_levels_used=nothing, mg_coarsest_grid=nothing)
+    open(path, "w") do io
+        println(io, "# Run")
+        println(io, "steps = ", toml_scalar(steps))
+        println(io, "runtime_s = ", toml_scalar(runtime_s))
+        println(io)
+        println(io, "# Error & residual")
+        println(io, "err_l2 = ", toml_scalar(err_l2))
+        println(io, "err_max = ", toml_scalar(err_max))
+        println(io, "res_l2 = ", toml_scalar(res_l2))
+        println(io)
+        println(io, "# Artifacts")
+        println(io, "history_file = ", toml_scalar(history_file))
+        println(io, "error_plot = ", toml_scalar(error_plot))
+        println(io, "exact_plot = ", toml_scalar(exact_plot))
+        if mg_levels_used !== nothing && mg_coarsest_grid !== nothing
+            println(io)
+            println(io, "# Multigrid")
+            println(io, "mg_levels_used = ", toml_scalar(mg_levels_used))
+            println(io, "mg_coarsest_grid = ", toml_scalar(mg_coarsest_grid))
+        end
+    end
+end
+
 function parse_bool(value::AbstractString)
     v = lowercase(strip(value))
     if v == "1" || v == "true" || v == "yes" || v == "on"
@@ -587,24 +636,20 @@ function main()
         "history_cg_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(sol.iter).txt"
     end
     res_l2 = last_res_l2(joinpath(run_dir, history_file))
-    run_summary = Dict(
-        "steps" => sol.iter,
-        "err_l2" => err_l2,
-        "err_max" => err_max,
-        "res_l2" => res_l2,
-        "runtime_s" => runtime,
-        "history_file" => history_file,
-        "error_plot" => "error_$(tag).png",
-        "exact_plot" => "exact_nx$(config.nx)_ny$(config.ny)_nz$(config.nz).png",
-    )
+    mg_levels_used = nothing
+    mg_coarsest_grid = nothing
     if mg_vcycle && mg_interval > 0
         levels, coarsest = mg_levels_and_coarsest(config)
-        run_summary["mg_levels_used"] = levels
-        run_summary["mg_coarsest_grid"] = coarsest
+        mg_levels_used = levels
+        mg_coarsest_grid = coarsest
     end
-    open(joinpath(run_dir, "run_summary.toml"), "w") do io
-        TOML.print(io, run_summary)
-    end
+    write_run_summary(joinpath(run_dir, "run_summary.toml");
+                      steps=sol.iter, runtime_s=runtime, res_l2=res_l2,
+                      err_l2=err_l2, err_max=err_max,
+                      history_file=history_file,
+                      error_plot="error_$(tag).png",
+                      exact_plot="exact_nx$(config.nx)_ny$(config.ny)_nz$(config.nz).png",
+                      mg_levels_used=mg_levels_used, mg_coarsest_grid=mg_coarsest_grid)
     @info "done" t=sol.t iter=sol.iter
 end
 
