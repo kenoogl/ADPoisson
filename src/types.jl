@@ -77,6 +77,7 @@ const DEFAULT_CLI_OPTS = Dict{String,Any}(
     "lap_order" => "second",
     "solver" => "taylor",
     "cg_precond" => "none",
+    "omega" => 1.0,
     "mg_interval" => 0,
     "mg_dt_scale" => 2.0,
     "mg_M" => 4,

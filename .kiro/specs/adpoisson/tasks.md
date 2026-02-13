@@ -81,7 +81,7 @@
   - _Requirements: Julia実装-可視化_
 - [x] 10. CLIと実行スクリプト (`scripts/run_solver.jl`)
   - コマンドライン引数処理
-  - `--nx --ny --nz --M --dt --Fo --max-steps --epsilon --alpha --bc-order --lap-order --output-dir` に対応
+  - `--nx --ny --nz --M --dt --Fo --max-steps --epsilon --alpha --bc-order --lap-order --output-dir --omega` に対応
   - `factory.jl` を利用して問題生成
   - depends: [7, 8]
   - _Requirements: Julia実装-パラメータ_
@@ -101,6 +101,7 @@
 > Phase 3 完了後に開始
 - [x] 12. SOR ソルバーの実装 (`src/sor.jl`)（内点のみ、Dirichlet境界の寄与は RHS に取り込み）
   - RB-SOR 反復
+  - 緩和係数 `omega` を入力パラメータとして受け取る（既定 1.0）
   - 相対残差 $\|r\|_2/\max(\|r_0\|_2,1)$ による収束判定
   - 収束履歴の出力（`step`, `err_l2`, `res_l2`）
   - 反復ループ内は `if` 分岐なし
@@ -109,6 +110,7 @@
   - _Design: 線形ソルバー（SOR）_
 - [x] 12b. SSOR ソルバーの実装 (`src/sor.jl`)
   - RBSSOR（4スイープ対称）による反復
+  - 緩和係数 `omega` を入力パラメータとして受け取る（既定 1.0）
   - 収束履歴の出力（`step`, `err_l2`, `res_l2`）
   - SOR と同一ファイル（`src/sor.jl`）に実装する
   - depends: [5a, 6, 12]

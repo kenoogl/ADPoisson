@@ -178,7 +178,7 @@ CG 実行前に前提を満たすことを確認する。
 - 反復ごとに残差 $r=Lu-f$ を計算し、相対残差 $\|r\|_2/\max(\|r_0\|_2,1)$ を記録
 - 収束判定は $\epsilon$ と `max_steps`（擬似時間と同様）
 - 履歴ファイル命名: `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
-- 緩和係数 $\omega=1.0$ を固定（将来変更可能な形で実装）
+- 緩和係数 $\omega$ は CLI `--omega` で指定可能（既定 1.0）
 - 反復ループ（内点更新）は `if` 分岐なしで構成する
 
 #### SSOR（RBSSOR）
@@ -190,7 +190,7 @@ CG 実行前に前提を満たすことを確認する。
 - 前処理はオプション指定（既定 **none**、`(:none / :ssor)`）
   - SSOR 使用時は対称性を満たす RBSSOR の 4 スイープ構成
   - 前進 R→B、後退 B→R、前進 B→R、後退 R→B（R=red, B=black）
-  - 緩和係数 $\omega=1.0$ を固定（将来変更可能な形で実装）
+  - 緩和係数 $\omega$ は CLI `--omega` で指定可能（既定 1.0）
 - 収束判定・履歴出力は SOR と同じ基準
 - 出力は実験ごとの `results/<exp>/` 配下に保存し、`run_config.toml` / `run_summary.toml` に記録する（上書き）
 - 履歴ファイル命名: `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
@@ -442,8 +442,10 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 ## CLI引数（scripts/run_solver.jl）
 - 形式: `julia scripts/run_solver.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --Fo=0.3 --max-steps=10000 --epsilon=1e-10 --alpha=1.0 --bc-order high --output-dir results`
 - 必須: `--nx,--ny,--nz`
-- 任意: `--M,--dt,--Fo,--max-steps,--epsilon,--alpha,--bc-order,--lap-order,--output-dir`（`--Fo` があれば `--dt` より優先、デフォルトは requirements.md に準拠）
+- 任意: `--M,--dt,--Fo,--max-steps,--epsilon,--alpha,--bc-order,--lap-order,--output-dir,--omega`（`--Fo` があれば `--dt` より優先、デフォルトは requirements.md に準拠）
 - ソルバー指定: `--solver taylor|sor|ssor|cg|mg-uniform-taylor|mg-hierarchical-taylor|mg-correction-taylor`
+- SOR/SSOR 指定: `--omega`（`--solver=sor|ssor` のとき有効、既定 1.0）
+- CG + SSOR 前処理指定: `--solver=cg --cg-precond=ssor` の場合は `--omega` を必須とする
 - ラプラシアン次数: `--lap-order second|fourth`（既定 `second`）
   - `--solver` が `taylor` 以外の場合は `second` に固定
   - `fourth` は ghost 2層移行（Task 25-27）完了まで実行時エラー

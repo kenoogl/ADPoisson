@@ -44,14 +44,15 @@
     - SSOR: `history_ssor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
     - CG: `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
   - 反復ループ内（内点更新）では `if` 分岐を使わず、事前に条件分岐を外へ出す
-  - SOR の緩和係数 $\omega$ は 1.0 を既定値とする（後で変更可能な形で実装する）
+  - SOR の緩和係数 $\omega$ は入力パラメータ `--omega` で指定可能とする（既定値 1.0）
   - CG の前処理はオプション指定とし、既定は **none**
     - 指定: `:none`（既定） / `:ssor`
-    - SSOR 使用時の緩和係数 $\omega$ は 1.0 を使用（後で変更可能な形で実装する）
+    - SSOR 使用時の緩和係数 $\omega$ は入力パラメータ `--omega` で指定可能とする（既定値 1.0）
     - **RBSSOR の対称スイープ順**: 前進 R→B、後退 B→R、前進 B→R、後退 R→B（R=red, B=black）
     - SSOR 前処理では `order=:spec` を固定する（`order=:high` は使わない）
   - SSOR ソルバー（RBSSOR）を選択可能とする
   - CLI は `--solver` で `taylor/sor/ssor/cg/mg-uniform-taylor/mg-hierarchical-taylor/mg-correction-taylor` を指定し、`--cg-precond` は `--solver=cg` のときのみ有効
+  - `--omega` は `--solver=sor|ssor` で有効、`--solver=cg --cg-precond=ssor` では必須
   - Taylor 系では `--lap-order second|fourth` を受け付ける（非Taylorソルバーでは `second` 固定）
 - [ ] **加速（マルチグリッド的アプローチ）**
   - Taylor 擬似時間法の残差履歴が「高周波が早く減衰し低周波が残る」挙動であるため、マルチグリッド的加速を検討する

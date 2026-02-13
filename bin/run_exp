@@ -32,11 +32,12 @@ fi
 EXP_NAME="${1:-}"
 
 if [ -z "$EXP_NAME" ]; then
-  echo "Usage: ./framework/bin/run_exp <experiment_name>" >&2
+  echo "Usage: ./bin/run_exp <experiment_name>" >&2
   exit 1
 fi
 
 CONFIG="experiments/${EXP_NAME}/config.yaml"
+ENTRYPOINT="$0"
 
 if [ ! -f "$CONFIG" ]; then
   echo "[ERROR] Config not found: $CONFIG" >&2
@@ -80,8 +81,14 @@ if [ -z "$EXEC_CMD" ] || [ "$EXEC_CMD" = "null" ]; then
   exit 1
 fi
 
-if ! echo "$EXEC_CMD" | grep -q "results/${EXP_NAME}"; then
-  echo "[ERROR] execution.command does not reference its own results directory" >&2
+EXPECTED_CONFIG="experiments/${EXP_NAME}/config.yaml"
+if ! echo "$EXEC_CMD" | grep -Eq -- "--config[=[:space:]]+${EXPECTED_CONFIG}"; then
+  echo "[ERROR] execution.command must reference ${EXPECTED_CONFIG}" >&2
+  exit 1
+fi
+
+if echo "$EXEC_CMD" | grep -Eq -- "--n\\b|--nx\\b|--ny\\b|--nz\\b|--Fo\\b|--M\\b|--dt\\b|--alpha\\b|--epsilon\\b|--max-steps\\b|--solver\\b|--cg-precond\\b|--omega\\b|--bc-order\\b|--lap-order\\b|--mg-"; then
+  echo "[ERROR] execution.command must not include runtime parameters (use config only)" >&2
   exit 1
 fi
 
@@ -138,7 +145,7 @@ cat <<EOF > "$RUN_JSON"
     "dirty": ${FRAMEWORK_DIRTY}
   },
   "execution": {
-    "entrypoint": "./framework/bin/run_exp",
+    "entrypoint": "${ENTRYPOINT}",
     "command": "$(printf '%s' "$EXEC_CMD" | sed 's/"/\\"/g')"
   },
   "inputs": {

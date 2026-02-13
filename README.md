@@ -19,8 +19,8 @@
 | 分類 | solver | 概要 | solver固有オプション（共通を除外） |
 | --- | --- | --- | --- |
 | Taylor | `taylor` | 擬似時間の Taylor 展開で Poisson を反復的に解く基本ソルバー | `--M`, `--dt`/`--Fo`, `--bc-order` |
-| SOR | `sor` | 赤黒 SOR による反復解法 | （なし） |
-| SSOR | `ssor` | 赤黒（RB）SSOR による反復解法 | （なし） |
+| SOR | `sor` | 赤黒 SOR による反復解法 | `--omega` |
+| SSOR | `ssor` | 赤黒（RB）SSOR による反復解法 | `--omega` |
 | CG | `cg` | 共役勾配法（必要に応じて SSOR 前処理） | `--cg-precond` |
 | MG | `mg-uniform-taylor` | Taylor スムーザを用いた V-cycle | `--M`, `--dt`/`--Fo`, `--bc-order`, `--mg-interval`, `--mg-M`, `--mg-dt-scale`, `--mg-nu1`, `--mg-nu2` |
 | MG | `mg-hierarchical-taylor` | レベルごとに `M` と `dt` を変えるスムーザ設定 | `--M`, `--dt`/`--Fo`, `--bc-order`, `--mg-interval`, `--mg-M`, `--mg-dt-scale`, `--mg-nu1`, `--mg-nu2`, `--mg-level-Ms`, `--mg-level-dt-scales` |
@@ -63,6 +63,8 @@ julia --project scripts/run_solver.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 
   - `fourth` は 4次差分（半径2、各軸5点）を使用
 - `--output-dir`: 出力ディレクトリ（デフォルト: `results`。存在しない場合は作成）
 - `--solver`: 実行するソルバー（`taylor` / `sor` / `ssor` / `cg` / `mg-uniform-taylor` / `mg-hierarchical-taylor` / `mg-correction-taylor`。デフォルト: `taylor`）
+- `--omega`: 緩和係数（`--solver sor|ssor` で使用、デフォルト: `1.0`）
+  - `--solver cg --cg-precond ssor` の場合は **必須**
 - `--cg-precond`: CG の前処理（`ssor` / `none`、デフォルト: `none`）
 - `--mg-interval`: MG補正の適用間隔（0 で無効、デフォルト: 0）
   - `--solver mg-*` の場合、未指定なら 5 に自動設定される（非 MG では無視される）
@@ -122,7 +124,7 @@ julia --project scripts/run_solver.jl --solver cg --cg-precond ssor --nx 32 --ny
 
 **反復解法（SOR）実行例**
 ```bash
-julia --project scripts/run_solver.jl --solver sor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
+julia --project scripts/run_solver.jl --solver sor --omega 1.0 --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
 ```
 
 **Uniform Taylor (V-cycle MG) 実行例**

@@ -37,18 +37,20 @@ function make_run_dir(output_dir; prefix="run")
 end
 
 function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol,
-                      lap_order::Symbol, output_dir::String, solver::Symbol, cg_precond::Symbol)
+                      lap_order::Symbol, output_dir::String, solver::Symbol,
+                      cg_precond::Symbol, omega::Float64)
     warm_dir = joinpath(output_dir, "_warmup")
     isdir(warm_dir) || mkpath(warm_dir)
     warm_config = SolverConfig(config.nx, config.ny, config.nz, config.M, config.dt, 1, 0.0)
     if solver === :taylor
         solve(warm_config, prob; bc_order=bc_order, lap_order=lap_order, output_dir=warm_dir)
     elseif solver === :sor
-        sor_solve(prob, warm_config; bc_order=bc_order, output_dir=warm_dir)
+        sor_solve(prob, warm_config; omega=omega, bc_order=bc_order, output_dir=warm_dir)
     elseif solver === :ssor
-        ssor_solve(prob, warm_config; bc_order=bc_order, output_dir=warm_dir)
+        ssor_solve(prob, warm_config; omega=omega, bc_order=bc_order, output_dir=warm_dir)
     elseif solver === :cg
-        cg_solve(prob, warm_config; precond=cg_precond, bc_order=bc_order, output_dir=warm_dir)
+        cg_solve(prob, warm_config; precond=cg_precond, omega_ssor=omega,
+                 bc_order=bc_order, output_dir=warm_dir)
     else
         error("unknown solver: $(solver)")
     end
@@ -195,9 +197,12 @@ function apply_run_config!(opts, run, seen)
         val = raw_val
         if key == "n" || key == "nx" || key == "ny" || key == "nz" || key == "M" || key == "max_steps"
             opts[key] = to_int(val)
-        elseif key == "Fo" || key == "dt" || key == "alpha" || key == "epsilon" ||
+        elseif key == "Fo" || key == "dt" || key == "alpha" || key == "epsilon" || key == "omega" ||
                key == "mg_dt_scale" || key == "mg_corr_dt_scale"
             opts[key] = to_float(val)
+            if key == "omega"
+                opts["omega_set"] = true
+            end
         elseif key == "solver" || key == "cg_precond" || key == "bc_order" || key == "lap_order"
             opts[key] = lowercase(to_string(val))
         elseif key == "mg_level_Ms"
@@ -316,6 +321,7 @@ function parse_args(args)
     opts["mg_corr_nu2"] = nothing
     opts["debug_residual"] = false
     opts["debug_vcycle"] = false
+    opts["omega_set"] = false
 
     config_path = nothing
     i = 1
@@ -367,6 +373,9 @@ function parse_args(args)
                 opts["solver"] = lowercase(args[i + 1])
             elseif key == "cg-precond" || key == "cg_precond"
                 opts["cg_precond"] = lowercase(args[i + 1])
+            elseif key == "omega"
+                opts["omega"] = parse(Float64, args[i + 1])
+                opts["omega_set"] = true
             elseif key == "max-steps" || key == "max_steps"
                 opts["max_steps"] = parse(Int, args[i + 1])
             elseif key == "mg-interval" || key == "mg_interval"
@@ -460,6 +469,7 @@ function main()
     solver_mode = lowercase(opts["solver"])
     solver = :taylor
     cg_precond = Symbol(lowercase(opts["cg_precond"]))
+    omega = Float64(opts["omega"])
     mg_interval = Int(opts["mg_interval"])
     mg_M = Int(opts["mg_M"])
     mg_dt_scale = Float64(opts["mg_dt_scale"])
@@ -506,6 +516,12 @@ function main()
     debug_vcycle = Bool(opts["debug_vcycle"])
     (cg_precond === :ssor || cg_precond === :none) ||
         error("cg-precond must be ssor/none")
+    if solver === :cg && cg_precond === :ssor && !Bool(opts["omega_set"])
+        error("omega is required when --solver=cg and --cg-precond=ssor")
+    end
+    if solver === :sor || solver === :ssor
+        omega > 0 || error("omega must be > 0")
+    end
     if !mg_vcycle &&
        ((mg_level_Ms !== nothing) || (mg_level_dt_scales !== nothing))
         @warn "mg-level-Ms/mg-level-dt-scales are ignored unless --solver mg-hierarchical-taylor"
@@ -540,6 +556,11 @@ function main()
     @printf("  solver=%s\n", solver_mode)
     if solver === :cg
         @printf("  cg_precond=%s\n", string(cg_precond))
+        if cg_precond === :ssor
+            @printf("  omega=%.6f\n", omega)
+        end
+    elseif solver === :sor || solver === :ssor
+        @printf("  omega=%.6f\n", omega)
     end
     if mg_vcycle && mg_interval > 0
         @printf("  mg_vcycle=%s mg_vcycle_mode=%s mg_interval=%d mg_dt_scale=%.3f mg_M=%d mg_nu1=%d mg_nu2=%d\n",
@@ -599,11 +620,16 @@ function main()
         end
     elseif solver === :cg
         run_config["cg_precond"] = string(cg_precond)
+        if cg_precond === :ssor
+            run_config["omega"] = omega
+        end
+    elseif solver === :sor || solver === :ssor
+        run_config["omega"] = omega
     end
     open(joinpath(run_dir, "run_config.toml"), "w") do io
         TOML.print(io, run_config)
     end
-    warmup_solve(config, prob, bc_order, lap_order, run_dir, solver, cg_precond)
+    warmup_solve(config, prob, bc_order, lap_order, run_dir, solver, cg_precond, omega)
     sol, runtime = if solver === :taylor
         correction_mode = (mg_correction == "correction-taylor") ? :correction_taylor : :classic
         solve_with_runtime(config, prob; bc_order=bc_order, lap_order=lap_order, output_dir=run_dir,
@@ -616,11 +642,12 @@ function main()
                            mg_corr_nu1=mg_corr_nu1, mg_corr_nu2=mg_corr_nu2,
                            debug_residual=debug_residual, debug_vcycle=debug_vcycle)
     elseif solver === :sor
-        sor_solve_with_runtime(prob, config; bc_order=bc_order, output_dir=run_dir)
+        sor_solve_with_runtime(prob, config; omega=omega, bc_order=bc_order, output_dir=run_dir)
     elseif solver === :ssor
-        ssor_solve_with_runtime(prob, config; bc_order=bc_order, output_dir=run_dir)
+        ssor_solve_with_runtime(prob, config; omega=omega, bc_order=bc_order, output_dir=run_dir)
     else
-        cg_solve_with_runtime(prob, config; precond=cg_precond, bc_order=bc_order, output_dir=run_dir)
+        cg_solve_with_runtime(prob, config; precond=cg_precond, omega_ssor=omega,
+                              bc_order=bc_order, output_dir=run_dir)
     end
     plot_slice(sol, prob, config; output_dir=run_dir)
     u_exact = ADPoisson.exact_solution_array(sol, prob, config)
