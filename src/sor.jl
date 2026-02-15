@@ -132,6 +132,9 @@ function sor_solve_with_runtime!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryCo
         err_l2 = l2_error_exact_precomputed(u, u_exact, prob, config)
         @printf(history, "%d %.6e %.6e\n", step, err_l2, res)
         iter = step
+        if !isfinite(res) || !isfinite(err_l2)
+            break
+        end
         if res <= config.epsilon
             converged = true
             break
@@ -199,6 +202,9 @@ function ssor_solve_with_runtime!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryC
         err_l2 = l2_error_exact_precomputed(u, u_exact, prob, config)
         @printf(history, "%d %.6e %.6e\n", step, err_l2, res)
         iter = step
+        if !isfinite(res) || !isfinite(err_l2)
+            break
+        end
         if res <= config.epsilon
             converged = true
             break
