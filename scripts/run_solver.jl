@@ -3,7 +3,6 @@
 using ADPoisson
 using Printf
 using Dates
-using TOML
 using YAML
 
 function last_res_l2(path::AbstractString)
@@ -79,52 +78,60 @@ function parse_float_list(value::AbstractString)
     return isempty(vals) ? nothing : vals
 end
 
-function toml_scalar(v)
+json_escape(s::AbstractString) = replace(s, "\\" => "\\\\", "\"" => "\\\"", "\n" => "\\n", "\r" => "\\r", "\t" => "\\t")
+
+function json_scalar(v)
     if v === nothing
-        return "\"\""
+        return "null"
     elseif v isa AbstractString
-        s = replace(v, "\\" => "\\\\", "\"" => "\\\"")
-        return "\"$(s)\""
+        return "\"" * json_escape(v) * "\""
     elseif v isa Bool
         return v ? "true" : "false"
     elseif v isa Integer
         return string(v)
     elseif v isa AbstractFloat
+        return isfinite(v) ? repr(v) : "\"" * (isnan(v) ? "nan" : (signbit(v) ? "-inf" : "inf")) * "\""
+    end
+    return json_scalar(string(v))
+end
+
+function residual_to_json_value(v)
+    if v === nothing
+        return nothing
+    elseif v isa Number
         if isnan(v)
             return "nan"
         elseif isinf(v)
             return signbit(v) ? "-inf" : "inf"
         end
-        return repr(v)
-    elseif v isa Tuple || v isa AbstractVector
-        return "[" * join((toml_scalar(x) for x in v), ", ") * "]"
+        return string(v)
     end
-    return toml_scalar(string(v))
+    return string(v)
 end
 
-function write_run_summary(path::AbstractString; steps, runtime_s, res_l2, err_l2, err_max,
-                           history_file, error_plot, exact_plot,
-                           mg_levels_used=nothing, mg_coarsest_grid=nothing)
+function write_run_summary_json(path::AbstractString; timestamp::AbstractString,
+                                config_path, script::AbstractString,
+                                iterations::Int, runtime_sec::Real,
+                                converged::Bool, residual_l2,
+                                error_l2, error_max,
+                                history::AbstractString)
     open(path, "w") do io
-        println(io, "# Run")
-        println(io, "steps = ", toml_scalar(steps))
-        println(io, "runtime_s = ", toml_scalar(runtime_s))
+        println(io, "{")
+        println(io, "  \"timestamp\": ", json_scalar(timestamp), ",")
+        println(io, "  \"config_path\": ", json_scalar(config_path), ",")
+        println(io, "  \"script\": ", json_scalar(script), ",")
         println(io)
-        println(io, "# Error & residual")
-        println(io, "err_l2 = ", toml_scalar(err_l2))
-        println(io, "err_max = ", toml_scalar(err_max))
-        println(io, "res_l2 = ", toml_scalar(res_l2))
+        println(io, "  \"iterations\": ", json_scalar(iterations), ",")
+        println(io, "  \"runtime_sec\": ", json_scalar(runtime_sec), ",")
         println(io)
-        println(io, "# Artifacts")
-        println(io, "history_file = ", toml_scalar(history_file))
-        println(io, "error_plot = ", toml_scalar(error_plot))
-        println(io, "exact_plot = ", toml_scalar(exact_plot))
-        if mg_levels_used !== nothing && mg_coarsest_grid !== nothing
-            println(io)
-            println(io, "# Multigrid")
-            println(io, "mg_levels_used = ", toml_scalar(mg_levels_used))
-            println(io, "mg_coarsest_grid = ", toml_scalar(mg_coarsest_grid))
-        end
+        println(io, "  \"converged\": ", json_scalar(converged), ",")
+        println(io, "  \"residual_l2\": ", json_scalar(residual_to_json_value(residual_l2)), ",")
+        println(io, "  \"error_l2\": ", json_scalar(error_l2), ",")
+        println(io, "  \"error_max\": ", json_scalar(error_max), ",")
+        println(io, "  \"artifacts\": {")
+        println(io, "    \"history\": ", json_scalar(history))
+        println(io, "  }")
+        println(io, "}")
     end
 end
 
@@ -289,17 +296,27 @@ function apply_config!(opts, cfg)
     end
 end
 
-function mg_levels_and_coarsest(config::SolverConfig)
-    levels = ADPoisson.mg_max_levels(config; min_n=4)
-    cx = config.nx
-    cy = config.ny
-    cz = config.nz
-    for _ in 2:levels
-        cx ÷= 2
-        cy ÷= 2
-        cz ÷= 2
+function find_config_path(args)
+    i = 1
+    while i <= length(args)
+        if args[i] == "--config"
+            i == length(args) && error("Missing value for --config")
+            return args[i + 1]
+        elseif startswith(args[i], "--config=")
+            return split(args[i], "=", limit=2)[2]
+        end
+        i += 1
     end
-    return levels, Dict("nx" => cx, "ny" => cy, "nz" => cz)
+    return nothing
+end
+
+function load_config_into_opts!(opts, config_path)
+    if config_path === nothing
+        return
+    end
+    cfg = YAML.load_file(config_path)
+    apply_config!(opts, cfg)
+    opts["config_path"] = config_path
 end
 
 function parse_args(args)
@@ -323,27 +340,7 @@ function parse_args(args)
     opts["debug_vcycle"] = false
     opts["omega_set"] = false
 
-    config_path = nothing
-    i = 1
-    while i <= length(args)
-        if args[i] == "--config"
-            if i == length(args)
-                error("Missing value for --config")
-            end
-            config_path = args[i + 1]
-            i += 2
-        elseif startswith(args[i], "--config=")
-            config_path = split(args[i], "=", limit=2)[2]
-            i += 1
-        else
-            i += 1
-        end
-    end
-    if config_path !== nothing
-        cfg = YAML.load_file(config_path)
-        apply_config!(opts, cfg)
-        opts["config_path"] = config_path
-    end
+    load_config_into_opts!(opts, find_config_path(args))
 
     i = 1
     while i <= length(args)
@@ -429,126 +426,57 @@ function parse_args(args)
     return opts
 end
 
-function main()
-    opts = parse_args(ARGS)
-    if opts["n"] !== nothing
-        nx = Int(opts["n"])
-        ny = Int(opts["n"])
-        nz = Int(opts["n"])
+function history_filename(config::SolverConfig, solver::Symbol, steps::Int)
+    if solver === :taylor
+        tag = "nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_M$(config.M)_steps$(steps)"
+        return "history_$(tag).txt"
+    elseif solver === :sor
+        return "history_sor_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(steps).txt"
+    elseif solver === :ssor
+        return "history_ssor_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(steps).txt"
     else
-        nx = Int(opts["nx"])
-        ny = Int(opts["ny"])
-        nz = Int(opts["nz"])
+        return "history_cg_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(steps).txt"
     end
-    dt = opts["dt"]
-    if opts["Fo"] !== nothing
-        dx = 1.0 / nx
-        dy = 1.0 / ny
-        dz = 1.0 / nz
-        denom = 1 / dx^2 + 1 / dy^2 + 1 / dz^2
-        dt = opts["Fo"] / denom
-    end
-    dx = 1.0 / nx
-    dy = 1.0 / ny
-    dz = 1.0 / nz
-    denom = 1 / dx^2 + 1 / dy^2 + 1 / dz^2
-    fo = dt * denom
-    dt_source = "dt"
-    if opts["Fo"] !== nothing
-        fo = opts["Fo"]
-        dt = fo / denom
-        dt_source = "Fo"
-    end
-    config = SolverConfig(nx, ny, nz,
-                          Int(opts["M"]), dt, Int(opts["max_steps"]), opts["epsilon"])
-    prob, _ = make_problem(config; alpha=opts["alpha"])
-    bc_order = Symbol(opts["bc_order"])
-    lap_order = Symbol(lowercase(string(opts["lap_order"])))
-    (lap_order === :second || lap_order === :fourth) ||
-        error("lap-order must be second/fourth")
-    solver_mode = lowercase(opts["solver"])
-    solver = :taylor
-    cg_precond = Symbol(lowercase(opts["cg_precond"]))
-    omega = Float64(opts["omega"])
-    mg_interval = Int(opts["mg_interval"])
-    mg_M = Int(opts["mg_M"])
-    mg_dt_scale = Float64(opts["mg_dt_scale"])
-    mg_nu1 = Int(opts["mg_nu1"])
-    mg_nu2 = Int(opts["mg_nu2"])
-    mg_level_Ms = opts["mg_level_Ms"]
-    mg_level_dt_scales = opts["mg_level_dt_scales"]
-    mg_corr_M = Int(opts["mg_corr_M"])
-    mg_corr_dt_scale = Float64(opts["mg_corr_dt_scale"])
-    mg_corr_steps = Int(opts["mg_corr_steps"])
-    corr_nu1_set = opts["mg_corr_nu1"] !== nothing
-    corr_nu2_set = opts["mg_corr_nu2"] !== nothing
-    mg_corr_nu1 = corr_nu1_set ? Int(opts["mg_corr_nu1"]) : mg_corr_steps
-    mg_corr_nu2 = corr_nu2_set ? Int(opts["mg_corr_nu2"]) : mg_corr_steps
-    mg_vcycle = false
-    mg_vcycle_mode = "uniform"
-    mg_correction = "classic"
+end
+
+function write_run_summary_for_solution(run_dir::AbstractString, config::SolverConfig, sol, runtime::Real;
+                                        solver::Symbol, err_l2, err_max,
+                                        config_path=nothing, script::AbstractString="scripts/run_solver.jl")
+    history_file = history_filename(config, solver, sol.iter)
+    res_l2 = last_res_l2(joinpath(run_dir, history_file))
+    converged = (res_l2 !== nothing) && isfinite(res_l2) && (sol.iter < config.max_steps)
+    write_run_summary_json(joinpath(run_dir, "run_summary.json");
+                           timestamp=Dates.format(now(), dateformat"yyyy-mm-ddTHH:MM:SS"),
+                           config_path=config_path,
+                           script=script,
+                           iterations=sol.iter,
+                           runtime_sec=runtime,
+                           converged=converged,
+                           residual_l2=res_l2,
+                           error_l2=err_l2,
+                           error_max=err_max,
+                           history=history_file)
+end
+
+function resolve_solver_mode(solver_mode::AbstractString)
     if solver_mode == "taylor" || solver_mode == "sor" || solver_mode == "ssor" || solver_mode == "cg"
-        solver = Symbol(solver_mode)
+        return Symbol(solver_mode), false, "uniform", "classic"
     elseif solver_mode == "mg-uniform-taylor"
-        solver = :taylor
-        mg_vcycle = true
-        mg_vcycle_mode = "uniform"
-        mg_correction = "classic"
+        return :taylor, true, "uniform", "classic"
     elseif solver_mode == "mg-hierarchical-taylor"
-        solver = :taylor
-        mg_vcycle = true
-        mg_vcycle_mode = "hierarchical"
-        mg_correction = "classic"
+        return :taylor, true, "hierarchical", "classic"
     elseif solver_mode == "mg-correction-taylor"
-        solver = :taylor
-        mg_vcycle = true
-        mg_vcycle_mode = "uniform"
-        mg_correction = "correction-taylor"
-    else
-        error("solver must be taylor/sor/ssor/cg/mg-uniform-taylor/mg-hierarchical-taylor/mg-correction-taylor")
+        return :taylor, true, "uniform", "correction-taylor"
     end
-    use_hierarchical_taylor = (mg_vcycle_mode == "hierarchical")
-    if mg_vcycle && mg_interval == 0
-        @warn "mg solver selected; defaulting --mg-interval to 5"
-        mg_interval = 5
-    end
-    debug_residual = Bool(opts["debug_residual"])
-    debug_vcycle = Bool(opts["debug_vcycle"])
-    (cg_precond === :ssor || cg_precond === :none) ||
-        error("cg-precond must be ssor/none")
-    if solver === :cg && cg_precond === :ssor && !Bool(opts["omega_set"])
-        error("omega is required when --solver=cg and --cg-precond=ssor")
-    end
-    if solver === :sor || solver === :ssor
-        omega > 0 || error("omega must be > 0")
-    end
-    if !mg_vcycle &&
-       ((mg_level_Ms !== nothing) || (mg_level_dt_scales !== nothing))
-        @warn "mg-level-Ms/mg-level-dt-scales are ignored unless --solver mg-hierarchical-taylor"
-        mg_level_Ms = nothing
-        mg_level_dt_scales = nothing
-    end
-    if mg_vcycle && !use_hierarchical_taylor &&
-       ((mg_level_Ms !== nothing) || (mg_level_dt_scales !== nothing))
-        @warn "mg-level-Ms/mg-level-dt-scales are ignored unless --solver mg-hierarchical-taylor"
-        mg_level_Ms = nothing
-        mg_level_dt_scales = nothing
-    end
-    if mg_correction == "classic" &&
-       (mg_corr_M != 2 || mg_corr_dt_scale != 1.0 || mg_corr_steps != 1 ||
-        corr_nu1_set || corr_nu2_set)
-        @warn "mg-corr-* options are ignored unless --solver mg-correction-taylor"
-    end
-    output_dir = string(opts["output_dir"])
-    run_dir = make_run_dir(output_dir)
-    if solver !== :taylor && bc_order !== :spec
-        @warn "bc-order is only valid for taylor; forcing to spec for iterative solvers" solver=solver bc_order=bc_order
-        bc_order = :spec
-    end
-    if solver !== :taylor && lap_order !== :second
-        @warn "lap-order is only valid for taylor; forcing to second for iterative solvers" solver=solver lap_order=lap_order
-        lap_order = :second
-    end
+    error("solver must be taylor/sor/ssor/cg/mg-uniform-taylor/mg-hierarchical-taylor/mg-correction-taylor")
+end
+
+function print_run_config(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol, lap_order::Symbol,
+                          solver_mode::AbstractString, solver::Symbol, cg_precond::Symbol, omega::Float64,
+                          mg_vcycle::Bool, mg_vcycle_mode::AbstractString, mg_interval::Int, mg_dt_scale::Float64,
+                          mg_M::Int, mg_nu1::Int, mg_nu2::Int, mg_correction::AbstractString,
+                          mg_corr_M::Int, mg_corr_dt_scale::Float64, mg_corr_steps::Int, mg_corr_nu1::Int, mg_corr_nu2::Int,
+                          output_dir::AbstractString, run_dir::AbstractString)
     println("run config:")
     @printf("  nx=%d ny=%d nz=%d M=%d\n", config.nx, config.ny, config.nz, config.M)
     @printf("  dt=%.3e max_steps=%d epsilon=%.3e\n", config.dt, config.max_steps, config.epsilon)
@@ -570,65 +498,135 @@ function main()
     end
     @printf("  output_dir=%s\n", output_dir)
     @printf("  run_dir=%s\n", run_dir)
-    run_config = Dict(
-        "timestamp" => Dates.format(now(), dateformat"yyyy-mm-ddTHH:MM:SSzzzz"),
-        "script" => "scripts/run_solver.jl",
-        "output_dir" => output_dir,
-        "run_dir" => run_dir,
-        "nx" => config.nx,
-        "ny" => config.ny,
-        "nz" => config.nz,
-        "max_steps" => config.max_steps,
-        "epsilon" => config.epsilon,
-        "alpha" => prob.alpha,
-        "bc_order" => string(bc_order),
-        "lap_order" => string(lap_order),
-        "solver" => solver_mode,
-        "warmup" => true,
-    )
-    if opts["config_path"] !== nothing
-        run_config["config_path"] = opts["config_path"]
+end
+
+function prepare_run_context(opts)
+    nx = opts["n"] !== nothing ? Int(opts["n"]) : Int(opts["nx"])
+    ny = opts["n"] !== nothing ? Int(opts["n"]) : Int(opts["ny"])
+    nz = opts["n"] !== nothing ? Int(opts["n"]) : Int(opts["nz"])
+
+    dt = opts["dt"]
+    if opts["Fo"] !== nothing
+        dx = 1.0 / nx
+        dy = 1.0 / ny
+        dz = 1.0 / nz
+        dt = opts["Fo"] / (1 / dx^2 + 1 / dy^2 + 1 / dz^2)
     end
-    if solver === :taylor
-        run_config["M"] = config.M
-        run_config["dt"] = config.dt
-        run_config["Fo"] = fo
-        run_config["dt_source"] = dt_source
-        run_config["mg_interval"] = mg_interval
-        run_config["mg_dt_scale"] = mg_dt_scale
-        run_config["mg_M"] = mg_M
-        run_config["mg_nu1"] = mg_nu1
-        run_config["mg_nu2"] = mg_nu2
-        run_config["mg_correction"] = mg_correction
-        run_config["mg_corr_M"] = mg_corr_M
-        run_config["mg_corr_dt_scale"] = mg_corr_dt_scale
-        run_config["mg_corr_steps"] = mg_corr_steps
-        run_config["mg_corr_nu1"] = mg_corr_nu1
-        run_config["mg_corr_nu2"] = mg_corr_nu2
-        if mg_level_Ms !== nothing
-            run_config["mg_level_Ms"] = mg_level_Ms
-        end
-        if mg_level_dt_scales !== nothing
-            run_config["mg_level_dt_scales"] = mg_level_dt_scales
-        end
-        run_config["debug_residual"] = debug_residual
-        run_config["debug_vcycle"] = debug_vcycle
-        if mg_vcycle && mg_interval > 0
-            levels, coarsest = mg_levels_and_coarsest(config)
-            run_config["mg_levels_used"] = levels
-            run_config["mg_coarsest_grid"] = coarsest
-        end
-    elseif solver === :cg
-        run_config["cg_precond"] = string(cg_precond)
-        if cg_precond === :ssor
-            run_config["omega"] = omega
-        end
-    elseif solver === :sor || solver === :ssor
-        run_config["omega"] = omega
+
+    config = SolverConfig(nx, ny, nz, Int(opts["M"]), dt, Int(opts["max_steps"]), opts["epsilon"])
+    prob, _ = make_problem(config; alpha=opts["alpha"])
+
+    bc_order = Symbol(opts["bc_order"])
+    lap_order = Symbol(lowercase(string(opts["lap_order"])))
+    (lap_order === :second || lap_order === :fourth) || error("lap-order must be second/fourth")
+
+    solver_mode = lowercase(opts["solver"])
+    solver, mg_vcycle, mg_vcycle_mode, mg_correction = resolve_solver_mode(solver_mode)
+
+    cg_precond = Symbol(lowercase(opts["cg_precond"]))
+    omega = Float64(opts["omega"])
+    mg_interval = Int(opts["mg_interval"])
+    mg_M = Int(opts["mg_M"])
+    mg_dt_scale = Float64(opts["mg_dt_scale"])
+    mg_nu1 = Int(opts["mg_nu1"])
+    mg_nu2 = Int(opts["mg_nu2"])
+    mg_level_Ms = opts["mg_level_Ms"]
+    mg_level_dt_scales = opts["mg_level_dt_scales"]
+    mg_corr_M = Int(opts["mg_corr_M"])
+    mg_corr_dt_scale = Float64(opts["mg_corr_dt_scale"])
+    mg_corr_steps = Int(opts["mg_corr_steps"])
+    corr_nu1_set = opts["mg_corr_nu1"] !== nothing
+    corr_nu2_set = opts["mg_corr_nu2"] !== nothing
+    mg_corr_nu1 = corr_nu1_set ? Int(opts["mg_corr_nu1"]) : mg_corr_steps
+    mg_corr_nu2 = corr_nu2_set ? Int(opts["mg_corr_nu2"]) : mg_corr_steps
+    debug_residual = Bool(opts["debug_residual"])
+    debug_vcycle = Bool(opts["debug_vcycle"])
+
+    use_hierarchical_taylor = (mg_vcycle_mode == "hierarchical")
+    if mg_vcycle && mg_interval == 0
+        @warn "mg solver selected; defaulting --mg-interval to 5"
+        mg_interval = 5
     end
-    open(joinpath(run_dir, "run_config.toml"), "w") do io
-        TOML.print(io, run_config)
+
+    (cg_precond === :ssor || cg_precond === :none) || error("cg-precond must be ssor/none")
+    if solver === :cg && cg_precond === :ssor && !Bool(opts["omega_set"])
+        error("omega is required when --solver=cg and --cg-precond=ssor")
     end
+    if solver === :sor || solver === :ssor
+        omega > 0 || error("omega must be > 0")
+    end
+
+    if !mg_vcycle && ((mg_level_Ms !== nothing) || (mg_level_dt_scales !== nothing))
+        @warn "mg-level-Ms/mg-level-dt-scales are ignored unless --solver mg-hierarchical-taylor"
+        mg_level_Ms = nothing
+        mg_level_dt_scales = nothing
+    end
+    if mg_vcycle && !use_hierarchical_taylor && ((mg_level_Ms !== nothing) || (mg_level_dt_scales !== nothing))
+        @warn "mg-level-Ms/mg-level-dt-scales are ignored unless --solver mg-hierarchical-taylor"
+        mg_level_Ms = nothing
+        mg_level_dt_scales = nothing
+    end
+    if mg_correction == "classic" && (mg_corr_M != 2 || mg_corr_dt_scale != 1.0 || mg_corr_steps != 1 || corr_nu1_set || corr_nu2_set)
+        @warn "mg-corr-* options are ignored unless --solver mg-correction-taylor"
+    end
+
+    output_dir = string(opts["output_dir"])
+    run_dir = make_run_dir(output_dir)
+    if solver !== :taylor && bc_order !== :spec
+        @warn "bc-order is only valid for taylor; forcing to spec for iterative solvers" solver=solver bc_order=bc_order
+        bc_order = :spec
+    end
+    if solver !== :taylor && lap_order !== :second
+        @warn "lap-order is only valid for taylor; forcing to second for iterative solvers" solver=solver lap_order=lap_order
+        lap_order = :second
+    end
+
+    print_run_config(config, prob, bc_order, lap_order, solver_mode, solver, cg_precond, omega,
+                     mg_vcycle, mg_vcycle_mode, mg_interval, mg_dt_scale, mg_M, mg_nu1, mg_nu2,
+                     mg_correction, mg_corr_M, mg_corr_dt_scale, mg_corr_steps, mg_corr_nu1, mg_corr_nu2,
+                     output_dir, run_dir)
+
+    return (config=config, prob=prob, bc_order=bc_order, lap_order=lap_order,
+            solver_mode=solver_mode, solver=solver, cg_precond=cg_precond, omega=omega,
+            mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
+            mg_level_Ms=mg_level_Ms, mg_level_dt_scales=mg_level_dt_scales, mg_vcycle=mg_vcycle,
+            use_hierarchical_taylor=use_hierarchical_taylor, mg_correction=mg_correction,
+            mg_corr_M=mg_corr_M, mg_corr_dt_scale=mg_corr_dt_scale, mg_corr_steps=mg_corr_steps,
+            mg_corr_nu1=mg_corr_nu1, mg_corr_nu2=mg_corr_nu2,
+            debug_residual=debug_residual, debug_vcycle=debug_vcycle,
+            output_dir=output_dir, run_dir=run_dir)
+end
+
+function main()
+    opts = parse_args(ARGS)
+    ctx = prepare_run_context(opts)
+    config = ctx.config
+    prob = ctx.prob
+    bc_order = ctx.bc_order
+    lap_order = ctx.lap_order
+    solver_mode = ctx.solver_mode
+    solver = ctx.solver
+    cg_precond = ctx.cg_precond
+    omega = ctx.omega
+    mg_interval = ctx.mg_interval
+    mg_dt_scale = ctx.mg_dt_scale
+    mg_M = ctx.mg_M
+    mg_nu1 = ctx.mg_nu1
+    mg_nu2 = ctx.mg_nu2
+    mg_level_Ms = ctx.mg_level_Ms
+    mg_level_dt_scales = ctx.mg_level_dt_scales
+    mg_vcycle = ctx.mg_vcycle
+    use_hierarchical_taylor = ctx.use_hierarchical_taylor
+    mg_correction = ctx.mg_correction
+    mg_corr_M = ctx.mg_corr_M
+    mg_corr_dt_scale = ctx.mg_corr_dt_scale
+    mg_corr_steps = ctx.mg_corr_steps
+    mg_corr_nu1 = ctx.mg_corr_nu1
+    mg_corr_nu2 = ctx.mg_corr_nu2
+    debug_residual = ctx.debug_residual
+    debug_vcycle = ctx.debug_vcycle
+    run_dir = ctx.run_dir
+    config_path = opts["config_path"]
     warmup_solve(config, prob, bc_order, lap_order, run_dir, solver, cg_precond, omega)
     sol, runtime = if solver === :taylor
         correction_mode = (mg_correction == "correction-taylor") ? :correction_taylor : :classic
@@ -649,34 +647,21 @@ function main()
         cg_solve_with_runtime(prob, config; precond=cg_precond, omega_ssor=omega,
                               bc_order=bc_order, output_dir=run_dir)
     end
-    plot_slice(sol, prob, config; output_dir=run_dir)
-    u_exact = ADPoisson.exact_solution_array(sol, prob, config)
-    err_l2, err_max = ADPoisson.error_stats_precomputed(sol.u, u_exact, prob, config)
-    tag = "nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_M$(config.M)_steps$(sol.iter)"
-    history_file = if solver === :taylor
-        "history_$(tag).txt"
-    elseif solver === :sor
-        "history_sor_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(sol.iter).txt"
-    elseif solver === :ssor
-        "history_ssor_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(sol.iter).txt"
+    has_nonfinite = any(x -> !isfinite(x), sol.u)
+    if has_nonfinite
+        @warn "solution contains non-finite values; skipping plot/error stats" solver=solver_mode run_dir=run_dir
     else
-        "history_cg_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(sol.iter).txt"
+        plot_slice(sol, prob, config; output_dir=run_dir)
     end
-    res_l2 = last_res_l2(joinpath(run_dir, history_file))
-    mg_levels_used = nothing
-    mg_coarsest_grid = nothing
-    if mg_vcycle && mg_interval > 0
-        levels, coarsest = mg_levels_and_coarsest(config)
-        mg_levels_used = levels
-        mg_coarsest_grid = coarsest
+    err_l2, err_max = if has_nonfinite
+        (NaN, NaN)
+    else
+        u_exact = ADPoisson.exact_solution_array(sol, prob, config)
+        ADPoisson.error_stats_precomputed(sol.u, u_exact, prob, config)
     end
-    write_run_summary(joinpath(run_dir, "run_summary.toml");
-                      steps=sol.iter, runtime_s=runtime, res_l2=res_l2,
-                      err_l2=err_l2, err_max=err_max,
-                      history_file=history_file,
-                      error_plot="error_$(tag).png",
-                      exact_plot="exact_nx$(config.nx)_ny$(config.ny)_nz$(config.nz).png",
-                      mg_levels_used=mg_levels_used, mg_coarsest_grid=mg_coarsest_grid)
+    write_run_summary_for_solution(run_dir, config, sol, runtime;
+                                   solver=solver, err_l2=err_l2, err_max=err_max,
+                                   config_path=config_path, script="scripts/run_solver.jl")
     @info "done" t=sol.t iter=sol.iter
 end
 

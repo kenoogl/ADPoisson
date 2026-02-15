@@ -1,6 +1,6 @@
 #!/usr/bin/env julia
 
-using TOML
+using YAML
 using Printf
 using Plots
 
@@ -29,8 +29,40 @@ function parse_args(args)
     return input_dir, output_dir
 end
 
-function safe_get(d::Dict{String,Any}, key::String, default=nothing)
-    return haskey(d, key) ? d[key] : default
+function safe_get(d::AbstractDict, key::String, default=nothing)
+    if haskey(d, key)
+        return d[key]
+    elseif haskey(d, Symbol(key))
+        return d[Symbol(key)]
+    end
+    return default
+end
+
+function dict_get(dict::AbstractDict, key)
+    if haskey(dict, key)
+        return dict[key]
+    end
+    if key isa String && haskey(dict, Symbol(key))
+        return dict[Symbol(key)]
+    end
+    if key isa Symbol && haskey(dict, String(key))
+        return dict[String(key)]
+    end
+    return nothing
+end
+
+function cfg_get(cfg, keys...)
+    v = cfg
+    for key in keys
+        if !(v isa AbstractDict)
+            return nothing
+        end
+        v = dict_get(v, key)
+        if v === nothing
+            return nothing
+        end
+    end
+    return v
 end
 
 function collect_rows(input_dir::String)
@@ -38,20 +70,30 @@ function collect_rows(input_dir::String)
     if !isdir(input_dir)
         error("input directory not found: $(input_dir)")
     end
-    cfg_path = joinpath(input_dir, "run_config.toml")
-    sum_path = joinpath(input_dir, "run_summary.toml")
-    if isfile(cfg_path) && isfile(sum_path)
-        cfg = TOML.parsefile(cfg_path)
-        sum = TOML.parsefile(sum_path)
-        steps = safe_get(sum, "steps", nothing)
+    sum_path = joinpath(input_dir, "run_summary.json")
+    if isfile(sum_path)
+        sum = YAML.load_file(sum_path)
+        run_cfg = Dict{String,Any}()
+        cfg_path = safe_get(sum, "config_path", nothing)
+        if cfg_path !== nothing && cfg_path != ""
+            full_cfg_path = isabspath(cfg_path) ? cfg_path : joinpath(pwd(), cfg_path)
+            if isfile(full_cfg_path)
+                loaded = YAML.load_file(full_cfg_path)
+                run_section = cfg_get(loaded, "run")
+                if run_section isa AbstractDict
+                    run_cfg = Dict{String,Any}(string(k) => v for (k, v) in run_section)
+                end
+            end
+        end
+        steps = safe_get(sum, "iterations", nothing)
         row = Dict{String,Any}()
         row["dir"] = basename(input_dir)
-        row["solver"] = safe_get(cfg, "solver", "unknown")
-        row["precond"] = safe_get(cfg, "cg_precond", "none")
-        row["nx"] = safe_get(cfg, "nx", 0)
-        row["err_l2"] = safe_get(sum, "err_l2", NaN)
-        row["res_l2"] = safe_get(sum, "res_l2", NaN)
-        row["runtime_s"] = safe_get(sum, "runtime_s", NaN)
+        row["solver"] = safe_get(run_cfg, "solver", "unknown")
+        row["precond"] = safe_get(run_cfg, "cg_precond", "none")
+        row["nx"] = safe_get(run_cfg, "nx", safe_get(run_cfg, "n", 0))
+        row["err_l2"] = safe_get(sum, "error_l2", NaN)
+        row["res_l2"] = safe_get(sum, "residual_l2", NaN)
+        row["runtime_s"] = safe_get(sum, "runtime_sec", NaN)
         row["steps"] = steps
         push!(rows, row)
         return rows
@@ -61,25 +103,35 @@ function collect_rows(input_dir::String)
         if !isdir(run_dir)
             continue
         end
-        cfg_path = joinpath(run_dir, "run_config.toml")
-        sum_path = joinpath(run_dir, "run_summary.toml")
-        if !isfile(cfg_path) || !isfile(sum_path)
+        sum_path = joinpath(run_dir, "run_summary.json")
+        if !isfile(sum_path)
             continue
         end
-        cfg = TOML.parsefile(cfg_path)
-        sum = TOML.parsefile(sum_path)
-        steps = safe_get(sum, "steps", nothing)
+        sum = YAML.load_file(sum_path)
+        run_cfg = Dict{String,Any}()
+        cfg_path = safe_get(sum, "config_path", nothing)
+        if cfg_path !== nothing && cfg_path != ""
+            full_cfg_path = isabspath(cfg_path) ? cfg_path : joinpath(pwd(), cfg_path)
+            if isfile(full_cfg_path)
+                loaded = YAML.load_file(full_cfg_path)
+                run_section = cfg_get(loaded, "run")
+                if run_section isa AbstractDict
+                    run_cfg = Dict{String,Any}(string(k) => v for (k, v) in run_section)
+                end
+            end
+        end
+        steps = safe_get(sum, "iterations", nothing)
         if steps == 20000
             continue
         end
         row = Dict{String,Any}()
         row["dir"] = entry
-        row["solver"] = safe_get(cfg, "solver", "unknown")
-        row["precond"] = safe_get(cfg, "cg_precond", "none")
-        row["nx"] = safe_get(cfg, "nx", 0)
-        row["err_l2"] = safe_get(sum, "err_l2", NaN)
-        row["res_l2"] = safe_get(sum, "res_l2", NaN)
-        row["runtime_s"] = safe_get(sum, "runtime_s", NaN)
+        row["solver"] = safe_get(run_cfg, "solver", "unknown")
+        row["precond"] = safe_get(run_cfg, "cg_precond", "none")
+        row["nx"] = safe_get(run_cfg, "nx", safe_get(run_cfg, "n", 0))
+        row["err_l2"] = safe_get(sum, "error_l2", NaN)
+        row["res_l2"] = safe_get(sum, "residual_l2", NaN)
+        row["runtime_s"] = safe_get(sum, "runtime_sec", NaN)
         row["steps"] = steps
         push!(rows, row)
     end
@@ -123,10 +175,26 @@ function make_labels(rows)
     return ordered, labels
 end
 
+function to_float_metric(x)
+    if x isa Number
+        return Float64(x)
+    end
+    s = lowercase(strip(string(x)))
+    if s == "inf" || s == "+inf"
+        return Inf
+    elseif s == "-inf"
+        return -Inf
+    elseif s == "nan"
+        return NaN
+    end
+    v = tryparse(Float64, s)
+    return v === nothing ? NaN : v
+end
+
 function plot_err(rows, labels, output_dir)
     x = 1:length(rows)
-    err_l2 = [r["err_l2"] for r in rows]
-    res_l2 = [r["res_l2"] for r in rows]
+    err_l2 = [to_float_metric(r["err_l2"]) for r in rows]
+    res_l2 = [to_float_metric(r["res_l2"]) for r in rows]
     p = plot(x, err_l2; label="err_l2", ylabel="error", yscale=:log10,
              yticks=10.0 .^ (-16:1:0),
              xticks=(x, labels), xrotation=60, xtickfontsize=8, bottom_margin=8Plots.mm,
@@ -138,8 +206,8 @@ end
 
 function plot_runtime_steps(rows, labels, output_dir)
     x = 1:length(rows)
-    runtime = [r["runtime_s"] for r in rows]
-    steps = [r["steps"] for r in rows]
+    runtime = [to_float_metric(r["runtime_s"]) for r in rows]
+    steps = [to_float_metric(r["steps"]) for r in rows]
     rt_min = minimum(runtime)
     rt_max = maximum(runtime)
     rt_pad = rt_max == rt_min ? rt_max * 0.1 + 1e-12 : (rt_max - rt_min) * 0.1
@@ -160,7 +228,7 @@ function main()
     end
     rows = collect_rows(input_dir)
     if isempty(rows)
-        error("no valid run_config.toml/run_summary.toml found in $(input_dir)")
+        error("no valid run_summary.json found in $(input_dir)")
     end
     ordered, labels = make_labels(rows)
     plot_err(ordered, labels, output_dir)

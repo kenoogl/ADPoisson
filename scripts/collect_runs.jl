@@ -1,6 +1,6 @@
 #!/usr/bin/env julia
 
-using TOML
+using YAML
 using Dates
 using Printf
 
@@ -29,8 +29,40 @@ function parse_args(args)
     return input_dir, output_path
 end
 
-function safe_get(d::Dict{String,Any}, key::String, default="")
-    return haskey(d, key) ? d[key] : default
+function safe_get(d::AbstractDict, key::String, default="")
+    if haskey(d, key)
+        return d[key]
+    elseif haskey(d, Symbol(key))
+        return d[Symbol(key)]
+    end
+    return default
+end
+
+function dict_get(dict::AbstractDict, key)
+    if haskey(dict, key)
+        return dict[key]
+    end
+    if key isa String && haskey(dict, Symbol(key))
+        return dict[Symbol(key)]
+    end
+    if key isa Symbol && haskey(dict, String(key))
+        return dict[String(key)]
+    end
+    return nothing
+end
+
+function cfg_get(cfg, keys...)
+    v = cfg
+    for key in keys
+        if !(v isa AbstractDict)
+            return nothing
+        end
+        v = dict_get(v, key)
+        if v === nothing
+            return nothing
+        end
+    end
+    return v
 end
 
 function format_float(x)
@@ -60,28 +92,38 @@ function collect_rows(input_dir::String)
         if !isdir(run_dir)
             continue
         end
-        cfg_path = joinpath(run_dir, "run_config.toml")
-        sum_path = joinpath(run_dir, "run_summary.toml")
-        if !isfile(cfg_path) || !isfile(sum_path)
+        sum_path = joinpath(run_dir, "run_summary.json")
+        if !isfile(sum_path)
             continue
         end
-        cfg = TOML.parsefile(cfg_path)
-        sum = TOML.parsefile(sum_path)
+        sum = YAML.load_file(sum_path)
+        run_cfg = Dict{String,Any}()
+        cfg_path = safe_get(sum, "config_path", nothing)
+        if cfg_path !== nothing && cfg_path != ""
+            full_cfg_path = isabspath(cfg_path) ? cfg_path : joinpath(pwd(), cfg_path)
+            if isfile(full_cfg_path)
+                loaded = YAML.load_file(full_cfg_path)
+                run_section = cfg_get(loaded, "run")
+                if run_section isa AbstractDict
+                    run_cfg = Dict{String,Any}(string(k) => v for (k, v) in run_section)
+                end
+            end
+        end
         row = Dict{String,Any}()
         row["dir"] = entry
-        row["nx"] = safe_get(cfg, "nx", "")
-        row["ny"] = safe_get(cfg, "ny", "")
-        row["nz"] = safe_get(cfg, "nz", "")
-        row["solver"] = safe_get(cfg, "solver", "")
-        row["cg_precond"] = safe_get(cfg, "cg_precond", "")
-        row["alpha"] = safe_get(cfg, "alpha", "")
-        row["epsilon"] = safe_get(cfg, "epsilon", "")
-        row["bc_order"] = safe_get(cfg, "bc_order", "")
-        row["steps"] = safe_get(sum, "steps", "")
-        row["err_l2"] = safe_get(sum, "err_l2", "")
-        row["err_max"] = safe_get(sum, "err_max", "")
-        row["runtime_s"] = safe_get(sum, "runtime_s", "")
-        row["res_l2"] = safe_get(sum, "res_l2", "")
+        row["nx"] = safe_get(run_cfg, "nx", safe_get(run_cfg, "n", ""))
+        row["ny"] = safe_get(run_cfg, "ny", safe_get(run_cfg, "n", ""))
+        row["nz"] = safe_get(run_cfg, "nz", safe_get(run_cfg, "n", ""))
+        row["solver"] = safe_get(run_cfg, "solver", "")
+        row["cg_precond"] = safe_get(run_cfg, "cg_precond", "")
+        row["alpha"] = safe_get(run_cfg, "alpha", "")
+        row["epsilon"] = safe_get(run_cfg, "epsilon", "")
+        row["bc_order"] = safe_get(run_cfg, "bc_order", "")
+        row["steps"] = safe_get(sum, "iterations", "")
+        row["err_l2"] = safe_get(sum, "error_l2", "")
+        row["err_max"] = safe_get(sum, "error_max", "")
+        row["runtime_s"] = safe_get(sum, "runtime_sec", "")
+        row["res_l2"] = safe_get(sum, "residual_l2", "")
         push!(rows, row)
     end
     return rows

@@ -164,8 +164,7 @@
 - [x] 19. 階層 Taylor パラメータ指定の追加
   - CLI に `--mg-level-Ms`, `--mg-level-dt-scales` を追加
   - 配列長がレベル数未満の場合は最後の値を繰り返す
-  - `run_config.toml` に設定値を保存
-  - テスト: CLI で指定した配列が `run_config.toml` に保存されることを確認
+  - テスト: CLI で指定した配列が実行時に正しく `vcycle!` へ反映されることを確認
   - depends: [18]
   - _Requirements: 階層 Taylor（Level-dependent Taylor）_
   - _Design: 階層 Taylor（Level-dependent Taylor）_
@@ -187,8 +186,7 @@
 - [x] 22. CLI/設定追加 (`scripts/run_solver.jl`)
   - `--solver mg-correction-taylor` と `--mg-corr-M`, `--mg-corr-dt-scale`, `--mg-corr-steps` を追加
   - **補正方程式（e）側**の pre/post 個別指定として `--mg-corr-nu1`, `--mg-corr-nu2` を追加
-  - `run_config.toml` へ `mg_correction`, `mg_corr_M`, `mg_corr_dt_scale`, `mg_corr_steps`,
-    `mg_corr_nu1`, `mg_corr_nu2` を保存
+  - `run_solver.jl` で Correction-Taylor の実行設定を受理し、実行経路へ反映
   - depends: [21]
   - _Requirements: 補正方程式の Taylor 化（Correction-Taylor）_
   - _Design: 補正方程式の Taylor 化（Correction-Taylor）_
@@ -239,7 +237,7 @@
 ## Phase 7: 4次ラプラシアン（暫定）
 - [x] 28. 4次ラプラシアン核と `--lap-order` 配線（暫定） (`src/core.jl`, `scripts/run_solver.jl`, `test/core.jl`)
   - `laplacian!` に `order=:second|:fourth` を追加し、`laplacian4!`（半径2）を実装
-  - `--lap-order second|fourth` を CLI に追加し、`run_config.toml` へ `lap_order` を保存
+  - `--lap-order second|fourth` を CLI に追加し、実効設定として反映
   - `taylor_step!` / 残差計算に `lap_order` を配線
   - 4次ラプラシアン単体テスト（収束次数）を追加
   - 現行（ghost 1層）では `--lap-order fourth` を実行時エラーとしてガード
@@ -263,7 +261,7 @@
   - _Design: 実験実行（bin/run_exp, config駆動）_
 - [x] 31. `scripts/run_solver.jl` の `--config` 対応強化 (`scripts/run_solver.jl`)
   - `--config` から実行設定を読み込む経路を正式実装
-  - 実効設定を `run_config.toml` に保存（`config_path` を含む）
+  - 実効設定のうち `config_path` を実行メタ情報として保持
   - depends: [29]
   - _Requirements: 実験実行構成（run_exp / config駆動）_
   - _Design: 実験実行（bin/run_exp, config駆動）_
@@ -272,5 +270,30 @@
   - 異常系: 旧形式 command（パラメータ直書き）をエラーにする
   - 異常系: `--config` の実験名不一致をエラーにする
   - depends: [30, 31]
+  - _Requirements: 実験実行構成（run_exp / config駆動）_
+  - _Design: テスト戦略_
+
+## Phase 9: 実行サマリ出力のJSON化（run_config廃止）
+> `run_config.toml` を廃止し、`run_summary.json` を唯一の実行記録とする
+- [x] 33. `run_solver.jl` の出力仕様変更 (`scripts/run_solver.jl`)
+  - `run_config.toml` の出力を削除
+  - `run_summary.toml` を `run_summary.json` へ変更
+  - `run_summary.json` に `timestamp`, `config_path`, `script`, `iterations`, `runtime_sec`,
+    `converged`, `residual_l2`, `error_l2`, `error_max`, `artifacts.history` を保存
+  - `converged` 判定を `residual_l2` が有限かつ `iterations < max_steps` に統一
+  - depends: [31]
+  - _Requirements: 時間積分手法, 実験実行構成（run_exp / config駆動）_
+  - _Design: 可視化, 実験実行（bin/run_exp, config駆動）_
+- [x] 34. サマリ読取スクリプトのJSON対応 (`scripts/collect_runs.jl`, `scripts/collect_omega_runs.jl`, `scripts/plot_run_summary.jl`)
+  - `run_summary.toml` 前提の読取を `run_summary.json` に統一
+  - `residual_l2` の `inf` / `nan` を発散として扱う規約を維持
+  - depends: [33]
+  - _Requirements: 時間積分手法, 検証機能_
+  - _Design: 可視化_
+- [x] 35. CLI/統合テストの更新 (`test/cli.jl`, `test/runtests.jl`)
+  - `run_config.toml` を参照するテストを削除/更新
+  - `run_summary.json` の必須キーと型を検証
+  - `converged` 判定（有限残差かつ `iterations < max_steps`）の境界ケースを検証
+  - depends: [33, 34]
   - _Requirements: 実験実行構成（run_exp / config駆動）_
   - _Design: テスト戦略_

@@ -28,8 +28,16 @@
     - ファイル名: `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
     - 出力列: `step`, `err_l2`, `res_l2`（`res_l2` は初期残差で相対化した残差L2）
     - 出力先は指定可能（デフォルト: `results/`）。実験単位（`results/<exp>/`）に固定し、同一実験名では上書きする
-    - 実行条件と結果を `run_config.toml` / `run_summary.toml` に記録する（上書き）
-      - `run_summary.toml` には最終反復時の `res_l2` を記録する
+    - 実行条件と結果を `run_summary.json` に記録する（上書き）
+      - `run_config.toml` は出力しない
+      - `run_summary.json` には次を保存する:
+        - メタ情報: `timestamp`, `config_path`, `script`
+        - 実行結果: `iterations`, `runtime_sec`, `converged`, `residual_l2`, `error_l2`, `error_max`
+        - 生成物: `artifacts.history`
+      - `converged` は次の条件を満たすとき `true` とする:
+        - `residual_l2` が `NaN` / `Inf` ではない
+        - `iterations < max_steps`
+        - 上記以外は `false`
   - 擬似時間刻みの条件は拡散数で管理する（推奨条件として採用）。拡散数（$\nu=1$）は
     $$Fo=\Delta t\left(\frac{1}{\Delta x^2}+\frac{1}{\Delta y^2}+\frac{1}{\Delta z^2}\right)$$
     と定義し、明示的安定性の推奨条件として $Fo \le 1/2$ を満たす
@@ -77,7 +85,6 @@
     - レベル番号は **1=最細（fine）**、以降レベルが増えるほど粗格子とする
     - `mg_level_Ms` / `mg_level_dt_scales` は CLI から指定可能とする
       - `--mg-level-Ms 4,4,2,2`、`--mg-level-dt-scales 2.0,2.0,4.0,4.0`
-      - `run_config.toml` に設定値を記録する
     - 配列長がレベル数未満の場合は **最後の値を繰り返して使用**する
     - `mg_level_dt_scales` 未指定時は **`mg_dt_scale` を全レベルに適用**する
     - レベル $\ell$ の Taylor 更新は、格子幅に対応した $\Delta t_\ell,\ M_\ell$ を用いる
@@ -87,7 +94,6 @@
       $$(u^{(\ell)})_{m+1}=\frac{1}{m+1}\Bigl((L_\ell u^{(\ell)}_m)-(f_\ell)_m\Bigr)$$
       $f$ が擬似時間一定なら $(f_\ell)_0=f_\ell,\ (f_\ell)_m=0\ (m\ge1)$
     - **誤差方程式** $L e = -r$（$r=Lu-f$）を解く場合は、粗格子で **境界条件はゼロ（Dirichlet）** とする
-    - `mg_level_Ms` / `mg_level_dt_scales` は `run_config.toml` に保存する
     - `mg_M` のデフォルトは **4**、`mg_dt_scale` のデフォルトは **2.0**
     - 最粗格子は内点数がいずれか 4 未満になった時点で停止する
   - **補正方程式の Taylor 化（Correction-Taylor）**:
@@ -115,11 +121,8 @@
     - 収束判定:
       - 全体収束判定は既存どおり $\|r\|_2 / \max(\|r_0\|_2,1)$
       - 補正ステップ内は固定回数反復を既定とし、将来拡張で閾値停止を許容
-    - 出力:
-      - `run_config.toml` に `mg_correction`, `mg_corr_M`, `mg_corr_dt_scale`, `mg_corr_steps`,
-        `mg_corr_nu1`, `mg_corr_nu2` を保存する
   - CG が適用可能であること（係数行列の対称性・正定性）を確認する
-  - 出力は実験ごとの `results/<exp>/` 配下に保存し、`run_config.toml` / `run_summary.toml` を記録する（上書き）
+  - 出力は実験ごとの `results/<exp>/` 配下に保存し、`run_summary.json` を記録する（上書き）
   - MG の履歴ファイル命名（レベル3のみ）:
     - レベル3: `history_vcycle_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 - [ ] **Taylor級数漸化式（3D Poisson, 擬似時間）**

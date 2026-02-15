@@ -192,7 +192,7 @@ CG 実行前に前提を満たすことを確認する。
   - 前進 R→B、後退 B→R、前進 B→R、後退 R→B（R=red, B=black）
   - 緩和係数 $\omega$ は CLI `--omega` で指定可能（既定 1.0）
 - 収束判定・履歴出力は SOR と同じ基準
-- 出力は実験ごとの `results/<exp>/` 配下に保存し、`run_config.toml` / `run_summary.toml` に記録する（上書き）
+- 出力は実験ごとの `results/<exp>/` 配下に保存し、`run_summary.json` に記録する（上書き）
 - 履歴ファイル命名: `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 - 反復ループ（内点更新）は `if` 分岐なしで構成する
 
@@ -256,7 +256,6 @@ Taylor 擬似時間法のスムーザ特性を利用し、低周波誤差の緩�
 - レベル番号は **1=最細（fine）**、以降は粗格子
 - `mg_level_Ms` / `mg_level_dt_scales` は CLI から指定する
   - `--mg-level-Ms 4,4,2,2`、`--mg-level-dt-scales 2.0,2.0,4.0,4.0`
-  - `run_config.toml` に保存
 - 配列長がレベル数未満の場合は **最後の値を繰り返して使用**
 - `mg_level_dt_scales` 未指定時は **`mg_dt_scale` を全レベルに適用**
 - レベル $\ell$ ごとに $\Delta t_\ell,\ M_\ell$ を適用
@@ -268,7 +267,6 @@ Taylor 擬似時間法のスムーザ特性を利用し、低周波誤差の緩�
   - 更新: $u^{new} = u + \sum_{m=1}^{M_\ell} (\Delta t_\ell)^m u^{(\ell)}_m$
 - 誤差方程式 $L e = -r$（$r=Lu-f$）を解く場合は **coarse の境界条件はゼロ Dirichlet** を用いる
 - CLI で受け取った `mg_level_Ms` / `mg_level_dt_scales` は `solve_with_runtime` 経由で `vcycle!` の `level_Ms` / `level_dt_scales` に渡す
-- `run_config.toml` に配列値を保存する
 
 #### 補正方程式の Taylor 化（Correction-Taylor）
 - 位置づけ:
@@ -420,7 +418,10 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 結果 `Solution` を受け取り、指定された断面 ($y=0.5$等) の分布図と誤差図を描画し、PNG保存する。
 解析解の断面図も保存する（同一解像度なら同一になるため格子情報のみ付与）。
 出力先は実験単位の固定ディレクトリ（`results/<exp>/`）とし、同一実験名では上書きする。
-実行条件と結果は `run_config.toml` / `run_summary.toml` に記録する（上書き）。
+実行条件と結果は `run_summary.json` に記録する（上書き）。
+`run_config.toml` は出力しない。
+`run_summary.json` の基本キーは `timestamp`, `config_path`, `script`, `iterations`, `runtime_sec`, `converged`, `residual_l2`, `error_l2`, `error_max`, `artifacts.history` とする。
+`converged` は `residual_l2` が有限（非 `NaN` / 非 `Inf`）かつ `iterations < max_steps` のとき `true`、それ以外は `false` とする。
 命名は以下を基本とする。
 - `exact_nx{nx}_ny{ny}_nz{nz}.png`
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
@@ -458,7 +459,7 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 - `execution.command` は **`--config experiments/<exp>/config.yaml` の参照のみ**を許可する。
 - `execution.command` に 必要以外の実行パラメータが含まれる場合は、エラー終了する。
 - `run_exp` のメタデータは `logs/<exp>.json` に保存し、同一実験名で上書きする。
-- `scripts/run_solver.jl` は `--config` 入力から実行設定を復元し、`run_config.toml` に `config_path` と実効設定を保存する。
+- `scripts/run_solver.jl` は `--config` 入力から実行設定を復元し、`run_summary.json` に `config_path` / `script` / `timestamp` を保存する。
 
 ## エラーハンドリング
 - パラメータチェック: $N_x, N_y, N_z > 0$, $M \ge 1$ 等。
