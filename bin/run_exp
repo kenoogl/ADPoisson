@@ -55,6 +55,7 @@ fi
 NAME_IN_CONFIG=$(yq -r '.experiment.name' "$CONFIG")
 RESULTS_IN_CONFIG=$(yq -r '.output.results_dir' "$CONFIG")
 EXEC_CMD=$(yq -r '.execution.command' "$CONFIG")
+POST_HISTORY_STATS=$(yq -r '.postprocess.history_stats // false' "$CONFIG")
 
 # ============================================
 # 2. 整合チェック
@@ -165,5 +166,13 @@ echo "[run_exp] run metadata written: ${RUN_JSON}"
 echo "[run_exp] Executing:"
 echo "$EXEC_CMD"
 bash -c "$EXEC_CMD"
+
+POST_HISTORY_STATS_LOWER=$(printf '%s' "$POST_HISTORY_STATS" | tr '[:upper:]' '[:lower:]')
+if [ "$POST_HISTORY_STATS_LOWER" = "true" ]; then
+  echo "[run_exp] Postprocess: history_stats"
+  if ! julia --project scripts/history_stats.jl --input-dir "$OUTDIR"; then
+    echo "[WARNING] history_stats postprocess failed (continuing): ${EXP_NAME}" >&2
+  fi
+fi
 
 echo "[run_exp] Experiment completed: ${EXP_NAME}"

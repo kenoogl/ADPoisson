@@ -44,7 +44,7 @@ julia --project scripts/run_solver.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 
 ```
 
 終了時に `Fo`、解析解との **L2誤差（絶対値）**、**最大誤差**、ステップ数、実行時間をまとめて出力します。`Fo > 0.5` の場合は警告を表示します。
-`run_summary.toml` の `runtime_s` は **JIT コンパイルを除外するためのウォームアップ実行後**の計測値です。
+`run_summary.json` の `runtime_sec` は **JIT コンパイルを除外するためのウォームアップ実行後**の計測値です。
 
 **コマンドライン引数**
 - `--nx`, `--ny`, `--nz`: 各方向の分割数（デフォルト: 16）
@@ -110,8 +110,7 @@ julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); max_steps=Int(ceil(0.5
 ```
 
 出力は `--output-dir` で指定したディレクトリ配下の `run_YYYYMMDD_HHMMSS/` に保存されます（デフォルト: `results/`）。
-実行条件と結果の確認用に `run_config.toml` と `run_summary.toml` を出力します。
-`--solver mg-*` の場合、`mg_levels_used`（使用レベル数）と `mg_coarsest_grid`（最粗格子の `nx,ny,nz`）を記録します。
+実行条件と結果の確認用に `run_summary.json` を出力します。
 - `exact_nx{nx}_ny{ny}_nz{nz}.png`（解析解のため格子情報のみ）
 - `error_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.png`
 - `history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`
@@ -238,11 +237,67 @@ julia --project scripts/compare_alpha.jl --solver sor --nx 32 --ny 32 --nz 32 --
 - `history_alpha{alpha}_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`（各 alpha の履歴）
 
 ### **実行結果の一覧化**
-指定ディレクトリ配下の `run_*/run_config.toml` と `run_summary.toml` を読み、Markdown の一覧表を生成します。
+指定ディレクトリ配下の `run_*/run_summary.json` を読み、Markdown の一覧表を生成します。
 ```bash
 julia --project scripts/collect_runs.jl --input-dir results
 ```
 デフォルト出力: `results/run_summary.md`
+
+### **omega 探索結果の一覧化（SOR/SSOR）**
+`sor_n*_omega*` / `ssor_n*_omega*` の `run_summary.json` を読み、カテゴリ別（SOR / SSOR）に一覧化します。
+```bash
+julia --project scripts/collect_omega_runs.jl --input-dir results
+```
+デフォルト出力: `results/omega_runs_summary.md`
+
+出力列:
+- `nx`（格子代表値）
+- `omega`
+- `steps`
+- `res_l2`
+- `runtime_s`
+- `dir`
+
+`res_l2` が `inf` または `nan` の場合は発散とみなし、`steps` は `∞` として表示します。
+
+`run_exp` 経由で実行する場合:
+```bash
+./bin/run_exp collect_omega_runs
+```
+出力: `results/collect_omega_runs/omega_runs_summary.md`
+
+### **履歴統計の JSON 出力**
+`run_summary.json` と `history*.txt`（`run_summary.json` の `artifacts.history` で参照）から、
+残差履歴の統計量を `history_stats.json` として出力します。
+
+`run_exp` で自動実行する場合は、対象実験の `config.yaml` に以下を追加します。
+```yaml
+postprocess:
+  history_stats: true
+```
+この場合、`bin/run_exp <exp>` / `bin/run_exp_patterns ...` の実行後に
+`history_stats.json` 生成を試行します（失敗時は warning のみで継続）。
+
+直接実行する場合:
+```bash
+julia --project scripts/history_stats.jl --input-dir results/<run_dir>
+```
+デフォルト出力: `results/<run_dir>/history_stats.json`
+
+出力形式:
+```json
+{
+  "history_stats": {
+    "monotonic": false,
+    "oscillation_detected": true,
+    "converged": true,
+    "initial_residual": 1.0,
+    "min_residual": 0.9640102,
+    "final_residual": 3.605399,
+    "convergence_rate_estimate": -0.12
+  }
+}
+```
 
 ### **実行結果の比較プロット**
 指定ディレクトリ配下の `run_*/` を走査し、`solver+precond+nx` を項目名として比較プロットを出力します。

@@ -224,6 +224,9 @@
 - 実行パラメータ（`n`, `Fo`, `M`, `mg_*`, `alpha` など）は `config.yaml` にのみ記載する
 - 旧形式（`execution.command` に実行パラメータを直書き）は受け付けず、`run_exp` は **エラー終了**する
 - `run_exp` は `logs/<exp>.json` を生成し、同一実験名で上書きする（履歴は Git で管理）
+- `config.yaml` の `postprocess.history_stats: true` を指定した場合、`run_exp` は solver 実行後に
+  `history_stats.json` 生成を試行する
+  - 後処理が失敗しても `run_exp` は警告のみを出して継続し、実験本体は成功扱いとする
 
 ## 非機能要件
 - [ ] **実装言語**: Julia

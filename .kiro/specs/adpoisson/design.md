@@ -460,6 +460,9 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 - `execution.command` に 必要以外の実行パラメータが含まれる場合は、エラー終了する。
 - `run_exp` のメタデータは `logs/<exp>.json` に保存し、同一実験名で上書きする。
 - `scripts/run_solver.jl` は `--config` 入力から実行設定を復元し、`run_summary.json` に `config_path` / `script` / `timestamp` を保存する。
+- `postprocess.history_stats`（bool）をサポートし、`true` の場合は solver 実行後に
+  `scripts/history_stats.jl --input-dir results/<exp>` を実行する。
+  - 後処理失敗時は warning を出して続行する（`run_exp` 全体は失敗扱いにしない）。
 
 ## エラーハンドリング
 - パラメータチェック: $N_x, N_y, N_z > 0$, $M \ge 1$ 等。

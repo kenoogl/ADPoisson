@@ -1,0 +1,48 @@
+experiment:
+  name: __EXP_NAME__
+  description: cg with SSOR preconditioner
+
+output:
+  results_dir: results/__EXP_NAME__
+  save_residual_history: true
+
+execution:
+  command: >
+    julia --project scripts/run_solver.jl
+    --config experiments/__EXP_NAME__/config.yaml
+
+postprocess:
+  history_stats: false
+
+run:
+  solver: cg
+  cg_precond: ssor
+  n: __NN__
+  Fo: 0.5
+  M: 4
+  max_steps: 20000
+  epsilon: 1.0e-8
+  alpha: 1.0
+  bc_order: spec
+  output_dir: results/__EXP_NAME__
+
+problem:
+  equation: poisson
+  dimension: 3
+  domain:
+    type: cartesian
+    size: [1.0, 1.0, 1.0]
+  boundary_condition:
+    type: dirichlet
+    solution: analytic
+
+discretization:
+  grid:
+    nx: __NN__
+    ny: __NN__
+    nz: __NN__
+  layout: cell-centered
+  ghost_cells: 2
+
+convergence:
+  residual_norm: L2
