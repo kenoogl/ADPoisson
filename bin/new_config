@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+EXP_NAME="${1:-}"
+
+if [ -z "$EXP_NAME" ]; then
+  echo "Usage: ./bin/new_config <experiment_name>" >&2
+  exit 1
+fi
+
+# framework が submodule で project 内にある前提
+FRAMEWORK_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TEMPLATE_PATH="${FRAMEWORK_ROOT}/framework/templates/config_core.yaml"
+
+EXP_DIR="experiments/${EXP_NAME}"
+CONFIG_PATH="${EXP_DIR}/config.yaml"
+
+if [ -f "$CONFIG_PATH" ]; then
+  echo "[new_config] config already exists: $CONFIG_PATH" >&2
+  exit 1
+fi
+
+if [ ! -f "$TEMPLATE_PATH" ]; then
+  echo "[new_config] template not found: $TEMPLATE_PATH" >&2
+  exit 1
+fi
+
+mkdir -p "$EXP_DIR"
+
+sed "s/__EXP_NAME__/${EXP_NAME}/g" \
+    "$TEMPLATE_PATH" > "$CONFIG_PATH"
+
+echo "[new_config] Created: $CONFIG_PATH"
+

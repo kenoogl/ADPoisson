@@ -1,0 +1,18 @@
+experiment:
+  name: collect_omega_runs
+  description: collect sor/ssor omega sweep summaries
+
+output:
+  results_dir: results/collect_omega_runs
+
+execution:
+  command: >
+    julia --project scripts/collect_omega_runs.jl
+    --config experiments/collect_omega_runs/config.yaml
+
+collect:
+  input_dir: results
+  output_file: omega_runs_summary.md
+
+postprocess:
+  history_stats: false

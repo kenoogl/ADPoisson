@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./bin/run_exp_patterns '<pattern>'
+
+Examples:
+  ./bin/run_exp_patterns 'sor_n*_omega*'
+EOF
+}
+
+if [ $# -ne 1 ]; then
+  usage
+  exit 1
+fi
+
+PATTERN="$1"
+
+EXPS_RAW="$(find experiments -mindepth 1 -maxdepth 1 -type d -name "$PATTERN" -exec basename {} \; | sort)"
+if [ -z "$EXPS_RAW" ]; then
+  echo "No experiments matched: experiments/$PATTERN"
+  exit 0
+fi
+
+echo "Pattern: $PATTERN"
+echo "Matched experiments:"
+echo "$EXPS_RAW" | sed 's/^/  - /'
+
+FAILED=""
+SKIPPED=""
+TOTAL=0
+FAILED_N=0
+SKIPPED_N=0
+
+while IFS= read -r exp; do
+  [ -z "$exp" ] && continue
+  TOTAL=$((TOTAL + 1))
+  cfg="experiments/${exp}/config.yaml"
+  if [ ! -f "$cfg" ]; then
+    echo "[skip] missing config: $cfg"
+    SKIPPED="${SKIPPED}${exp}"$'\n'
+    SKIPPED_N=$((SKIPPED_N + 1))
+    continue
+  fi
+
+  echo "[run] $exp"
+  if ./bin/run_exp "$exp"; then
+    echo "[ok]  $exp"
+  else
+    echo "[ng]  $exp"
+    FAILED="${FAILED}${exp}"$'\n'
+    FAILED_N=$((FAILED_N + 1))
+  fi
+done <<EOF
+$EXPS_RAW
+EOF
+
+echo
+echo "===== Summary ====="
+echo "pattern : $PATTERN"
+echo "total   : $TOTAL"
+echo "failed  : $FAILED_N"
+echo "skipped : $SKIPPED_N"
+
+if [ "$FAILED_N" -gt 0 ]; then
+  echo
+  echo "Failed experiments:"
+  printf "%s" "$FAILED" | sed '/^$/d; s/^/  - /'
+fi
+
+if [ "$SKIPPED_N" -gt 0 ]; then
+  echo
+  echo "Skipped experiments (missing config):"
+  printf "%s" "$SKIPPED" | sed '/^$/d; s/^/  - /'
+fi

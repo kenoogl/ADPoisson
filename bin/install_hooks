@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+ln -sf framework/hooks/pre-commit .git/hooks/pre-commit
+chmod +x framework/hooks/pre-commit
+echo "Hooks installed."
+

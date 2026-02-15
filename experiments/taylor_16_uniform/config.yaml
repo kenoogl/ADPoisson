@@ -54,3 +54,6 @@ execution:
   command: >
     julia --project scripts/run_solver.jl
     --config experiments/taylor_16_uniform/config.yaml
+
+postprocess:
+  history_stats: true

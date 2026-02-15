@@ -1,0 +1,47 @@
+experiment:
+  name: sor_n64_omega1.2
+  description: sor
+
+output:
+  results_dir: results/sor_n64_omega1.2
+  save_residual_history: true
+
+execution:
+  command: >
+    julia --project scripts/run_solver.jl
+    --config experiments/sor_n64_omega1.2/config.yaml
+
+postprocess:
+  history_stats: true
+
+run:
+  solver: sor
+  n: 64
+  Fo: 0.5
+  omega: 1.2
+  max_steps: 20000
+  epsilon: 1.0e-8
+  alpha: 1.0
+  bc_order: spec
+  output_dir: results/sor_n64_omega1.2
+
+problem:
+  equation: poisson
+  dimension: 3
+  domain:
+    type: cartesian
+    size: [1.0, 1.0, 1.0]
+  boundary_condition:
+    type: dirichlet
+    solution: analytic
+
+discretization:
+  grid:
+    nx: 64
+    ny: 64
+    nz: 64
+  layout: cell-centered
+  ghost_cells: 2
+
+convergence:
+  residual_norm: L2

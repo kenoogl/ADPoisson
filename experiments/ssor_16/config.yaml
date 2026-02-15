@@ -32,3 +32,6 @@ convergence:
 output:
   results_dir: results/ssor_16
   save_residual_history: true
+
+postprocess:
+  history_stats: true

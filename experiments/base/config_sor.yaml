@@ -12,7 +12,7 @@ execution:
     --config experiments/__EXP_NAME__/config.yaml
 
 postprocess:
-  history_stats: false
+  history_stats: true
 
 run:
   solver: __SOLVER__
