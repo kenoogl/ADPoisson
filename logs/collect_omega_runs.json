@@ -1,0 +1,23 @@
+{
+  "run_id": "collect_omega_runs",
+  "note": "This file is overwritten on each run. Git history stores past executions.",
+  "timestamp": "2026-02-14T18:52:19+09:00",
+  "project": {
+    "commit": "ea97a01",
+    "dirty": true
+  },
+  "framework": {
+    "commit": "none",
+    "dirty": none
+  },
+  "execution": {
+    "entrypoint": "bin/run_exp",
+    "command": "julia --project scripts/collect_omega_runs.jl --config experiments/collect_omega_runs/config.yaml"
+  },
+  "inputs": {
+    "config": "experiments/collect_omega_runs/config.yaml"
+  },
+  "outputs": {
+    "results_dir": "results/collect_omega_runs"
+  }
+}

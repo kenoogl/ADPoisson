@@ -1,0 +1,23 @@
+{
+  "run_id": "sor_n16_omega1.4",
+  "note": "This file is overwritten on each run. Git history stores past executions.",
+  "timestamp": "2026-02-14T09:17:14+09:00",
+  "project": {
+    "commit": "ea97a01",
+    "dirty": true
+  },
+  "framework": {
+    "commit": "none",
+    "dirty": none
+  },
+  "execution": {
+    "entrypoint": "./bin/run_exp",
+    "command": "julia --project scripts/run_solver.jl --config experiments/sor_n16_omega1.4/config.yaml"
+  },
+  "inputs": {
+    "config": "experiments/sor_n16_omega1.4/config.yaml"
+  },
+  "outputs": {
+    "results_dir": "results/sor_n16_omega1.4"
+  }
+}

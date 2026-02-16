@@ -1,0 +1,23 @@
+{
+  "run_id": "taylor_16_uniform",
+  "note": "This file is overwritten on each run. Git history stores past executions.",
+  "timestamp": "2026-02-15T14:22:03+09:00",
+  "project": {
+    "commit": "bf1811e",
+    "dirty": true
+  },
+  "framework": {
+    "commit": "none",
+    "dirty": none
+  },
+  "execution": {
+    "entrypoint": "bin/run_exp",
+    "command": "julia --project scripts/run_solver.jl --config experiments/taylor_16_uniform/config.yaml"
+  },
+  "inputs": {
+    "config": "experiments/taylor_16_uniform/config.yaml"
+  },
+  "outputs": {
+    "results_dir": "results/taylor_16_uniform"
+  }
+}

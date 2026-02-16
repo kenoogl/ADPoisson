@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-02-15T13:45:06",
+  "config_path": "experiments/cg_none_16/config.yaml",
+  "script": "scripts/run_solver.jl",
+
+  "iterations": 8,
+  "runtime_sec": 0.0001499652862548828,
+
+  "converged": true,
+  "residual_l2": "7.366597e-11",
+  "error_l2": 0.0017228509048069622,
+  "error_max": 0.007576457683368121,
+  "artifacts": {
+    "history": "history_cg_nx16_ny16_nz16_steps8.txt"
+  }
+}

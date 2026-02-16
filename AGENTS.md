@@ -1,8 +1,11 @@
 # AGENT.md
 
+## Purpose
+This repository is designed for AI-assisted research analysis.
+
 ## Global Rules
 - config.yaml is ground truth for experiments.
-- metrics.json contains results only.
+- run_summary.json contains results only.
 - Do not modify results files.
 - Separate facts from evaluation.
 
@@ -13,11 +16,21 @@
 ### Priority Files
 1. intent.md
 2. experiments/<exp>/config.yaml
-3. results/<exp>/metrics.json
+3. results/<exp>/run_summary.json
 4. logs/<exp>.json
+5. experiments/<exp>/notes.md (human thoughts, optional)
+6. results/<exp>/ (generated results)
+
+### AI Operating Rules
+1. config.yaml is the single source of truth for experiment settings.
+2. run_summary.json contains result summary only.
+3. Do not infer solver settings from run_summary.json.
+4. When comparing experiments, use run_summary.json fields.
+5. Prioritize objective metrics over human notes.
+6. Distinguish facts from evaluation.
 
 ### Analysis Rules
-- Compare metrics across experiments.
+- Compare run_summary across experiments.
 - Check convergence flag first.
 - Avoid using human notes as ground truth.
 

@@ -2,10 +2,10 @@
 
 julia_version = "1.12.1"
 manifest_format = "2.0"
-project_hash = "99747871845bf7d9bf029dbbf9313354caace18d"
+project_hash = "c767ea83f9700cdaccca044694cff93df9649451"
 
 [[deps.ADPoisson]]
-deps = ["LinearAlgebra", "Plots", "Printf", "Statistics", "Test"]
+deps = ["Dates", "LinearAlgebra", "Plots", "Printf", "Statistics", "TOML", "Test", "YAML"]
 path = "."
 uuid = "f43fd85a-a032-4c3c-ba7d-b18d801d62ac"
 version = "0.1.0"
@@ -761,6 +761,12 @@ git-tree-sha1 = "aceda6f4e598d331548e04cc6b2124a6148138e3"
 uuid = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 version = "0.34.10"
 
+[[deps.StringEncodings]]
+deps = ["Libiconv_jll"]
+git-tree-sha1 = "b765e46ba27ecf6b44faf70df40c57aa3a547dcb"
+uuid = "69024149-9ee7-55f6-a4c4-859efe599b68"
+version = "0.3.7"
+
 [[deps.StructUtils]]
 deps = ["Dates", "UUIDs"]
 git-tree-sha1 = "9297459be9e338e546f5c4bedb59b3b5674da7f1"
@@ -990,6 +996,12 @@ deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "a63799ff68005991f9d9491b6e95bd3478d783cb"
 uuid = "c5fb5394-a638-5e4d-96e5-b29de1b5cf10"
 version = "1.6.0+0"
+
+[[deps.YAML]]
+deps = ["Base64", "Dates", "Printf", "StringEncodings"]
+git-tree-sha1 = "a1c0c7585346251353cddede21f180b96388c403"
+uuid = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+version = "0.4.16"
 
 [[deps.Zlib_jll]]
 deps = ["Libdl"]
