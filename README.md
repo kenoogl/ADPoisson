@@ -293,6 +293,8 @@ julia --project scripts/history_stats.jl --input-dir results/<run_dir>
     "monotonic": false,
     "oscillation_detected": true,
     "converged": true,
+    "iterations": 162,
+    "runtime_sec": 2.5548958778381348,
     "initial_residual": 1.0,
     "min_residual": 0.9640102,
     "final_residual": 3.605399,

@@ -128,6 +128,31 @@ function json_num(x)
     return repr(x)
 end
 
+function parse_int_or_default(x, default::Int=0)
+    x === nothing && return default
+    if x isa Integer
+        return Int(x)
+    elseif x isa AbstractFloat
+        isfinite(x) || return default
+        return Int(round(x))
+    elseif x isa AbstractString
+        v = tryparse(Int, x)
+        return v === nothing ? default : v
+    end
+    return default
+end
+
+function parse_float_or_default(x, default::Float64=0.0)
+    x === nothing && return default
+    if x isa Number
+        return Float64(x)
+    elseif x isa AbstractString
+        v = tryparse(Float64, x)
+        return v === nothing ? default : v
+    end
+    return default
+end
+
 function write_stats_json(path::AbstractString, stats::Dict{String,Any})
     mkpath(dirname(path))
     open(path, "w") do io
@@ -136,6 +161,8 @@ function write_stats_json(path::AbstractString, stats::Dict{String,Any})
         println(io, "    \"monotonic\": ", json_bool(stats["monotonic"]), ",")
         println(io, "    \"oscillation_detected\": ", json_bool(stats["oscillation_detected"]), ",")
         println(io, "    \"converged\": ", json_bool(stats["converged"]), ",")
+        println(io, "    \"iterations\": ", json_num(stats["iterations"]), ",")
+        println(io, "    \"runtime_sec\": ", json_num(stats["runtime_sec"]), ",")
         println(io, "    \"initial_residual\": ", json_num(stats["initial_residual"]), ",")
         println(io, "    \"min_residual\": ", json_num(stats["min_residual"]), ",")
         println(io, "    \"final_residual\": ", json_num(stats["final_residual"]), ",")
@@ -159,10 +186,14 @@ function main()
 
     residuals = read_history_residuals(history_path)
     converged = Bool(safe_get(run_summary, "converged", false))
+    iterations = parse_int_or_default(safe_get(run_summary, "iterations", 0), 0)
+    runtime_sec = parse_float_or_default(safe_get(run_summary, "runtime_sec", safe_get(run_summary, "runtime_s", 0.0)), 0.0)
     stats = Dict{String,Any}(
         "monotonic" => is_monotonic_nonincreasing(residuals),
         "oscillation_detected" => oscillation_detected(residuals),
         "converged" => converged,
+        "iterations" => iterations,
+        "runtime_sec" => runtime_sec,
         "initial_residual" => residuals[1],
         "min_residual" => minimum(residuals),
         "final_residual" => residuals[end],
