@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Block any framework submodule updates staged in the parent repo.
+if git diff --cached --name-only -- framework | grep -q '^framework$'; then
+  echo "[ERROR] framework submodule update is not allowed in this repository." >&2
+  echo "        Unstage it with: git restore --staged framework" >&2
+  exit 1
+fi
+
+# Block commits while framework submodule has local changes.
+if [ -d "framework/.git" ]; then
+  if [ -n "$(git -C framework status --porcelain)" ]; then
+    echo "[ERROR] framework has local changes; commits are blocked." >&2
+    echo "        Revert or move changes out of framework before committing." >&2
+    exit 1
+  fi
+fi
+
+# Delegate to framework hook checks if available.
+if [ -x "framework/hooks/pre-commit" ]; then
+  framework/hooks/pre-commit
+fi
