@@ -12,7 +12,8 @@ execution:
     --config experiments/sor_n32_omega1.6/config.yaml
 
 postprocess:
-  history_stats: true
+  commands:
+    - julia --project scripts/history_stats.jl --input-dir results/sor_n32_omega1.6
 
 run:
   solver: sor

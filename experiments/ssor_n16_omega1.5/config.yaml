@@ -12,7 +12,8 @@ execution:
     --config experiments/ssor_n16_omega1.5/config.yaml
 
 postprocess:
-  history_stats: true
+  commands:
+    - julia --project scripts/history_stats.jl --input-dir results/ssor_n16_omega1.5
 
 run:
   solver: ssor

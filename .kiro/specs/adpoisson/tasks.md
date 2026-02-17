@@ -298,15 +298,15 @@
   - _Requirements: 実験実行構成（run_exp / config駆動）_
   - _Design: テスト戦略_
 
-## Phase 10: run_exp 後処理フック（history_stats）
+## Phase 10: run_exp 後処理フック（postprocess.commands）
 - [x] 36. `run_exp` に後処理フック追加 (`bin/run_exp`)
-  - `postprocess.history_stats` を読み取り、`true` の場合に `history_stats` 生成を実行
+  - `postprocess.commands` を読み取り、solver 実行後にコマンドを順次実行
   - 後処理失敗時は warning のみを出力し、`run_exp` は継続する
   - depends: [33]
   - _Requirements: 実験実行構成（run_exp / config駆動）_
   - _Design: 実験実行（bin/run_exp, config駆動）_
 - [x] 37. テンプレート更新 (`framework/templates/config_core.yaml`, `experiments/base/config_*.yaml`)
-  - `postprocess.history_stats` の設定欄をテンプレートに追加
+  - `postprocess.commands` の設定欄をテンプレートに追加
   - depends: [36]
   - _Requirements: 実験実行構成（run_exp / config駆動）_
   - _Design: 実験実行（bin/run_exp, config駆動）_

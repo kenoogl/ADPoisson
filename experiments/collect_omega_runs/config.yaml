@@ -15,4 +15,4 @@ collect:
   output_file: omega_runs_summary.md
 
 postprocess:
-  history_stats: false
+  commands: []

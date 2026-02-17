@@ -273,10 +273,12 @@ julia --project scripts/collect_omega_runs.jl --input-dir results
 `run_exp` で自動実行する場合は、対象実験の `config.yaml` に以下を追加します。
 ```yaml
 postprocess:
-  history_stats: true
+  commands:
+    - julia --project scripts/history_stats.jl --input-dir results/<exp_name>
 ```
-この場合、`bin/run_exp <exp>` / `bin/run_exp_patterns ...` の実行後に
-`history_stats.json` 生成を試行します（失敗時は warning のみで継続）。
+`postprocess.commands` は配列なので、任意の後処理を複数登録できます。
+`bin/run_exp <exp>` / `bin/run_exp_patterns ...` は solver 実行後に各コマンドを順に実行し、
+失敗したコマンドは warning を出してスキップします（実験本体は継続）。
 
 直接実行する場合:
 ```bash

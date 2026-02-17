@@ -56,4 +56,5 @@ execution:
     --config experiments/taylor_64_uniform/config.yaml
 
 postprocess:
-  history_stats: true
+  commands:
+    - julia --project scripts/history_stats.jl --input-dir results/taylor_64_uniform
