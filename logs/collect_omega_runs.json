@@ -1,9 +1,9 @@
 {
   "run_id": "collect_omega_runs",
   "note": "This file is overwritten on each run. Git history stores past executions.",
-  "timestamp": "2026-02-14T18:52:19+09:00",
+  "timestamp": "2026-02-18T09:30:14+09:00",
   "project": {
-    "commit": "ea97a01",
+    "commit": "3bed41c",
     "dirty": true
   },
   "framework": {

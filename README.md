@@ -10,7 +10,9 @@
 | --- | --- | --- | --- |
 | `taylor` | 有効 | 有効 | 有効 |
 | `sor` | 無視 | 無視 | 無視（`spec` 固定） |
+| `rbsor` | 無視 | 無視 | 無視（`spec` 固定） |
 | `ssor` | 無視 | 無視 | 無視（`spec` 固定） |
+| `rbssor` | 無視 | 無視 | 無視（`spec` 固定） |
 | `cg` | 無視 | 無視 | 無視（`spec` 固定） |
 | `mg-uniform-taylor` | 有効 | 有効 | 有効 |
 | `mg-hierarchical-taylor` | 有効 | 有効 | 有効 |
@@ -19,9 +21,11 @@
 | 分類 | solver | 概要 | solver固有オプション（共通を除外） |
 | --- | --- | --- | --- |
 | Taylor | `taylor` | 擬似時間の Taylor 展開で Poisson を反復的に解く基本ソルバー | `--M`, `--dt`/`--Fo`, `--bc-order` |
-| SOR | `sor` | 赤黒 SOR による反復解法 | `--omega` |
-| SSOR | `ssor` | 赤黒（RB）SSOR による反復解法 | `--omega` |
-| CG | `cg` | 共役勾配法（必要に応じて SSOR 前処理） | `--cg-precond` |
+| SOR | `sor` | ポイント SOR による反復解法 | `--omega` |
+| SOR | `rbsor` | 赤黒（RB）SOR による反復解法 | `--omega` |
+| SSOR | `ssor` | ポイント SSOR（point-SOR 前進/後退） | `--omega` |
+| SSOR | `rbssor` | 赤黒（RB）SSOR による反復解法 | `--omega` |
+| CG | `cg` | 共役勾配法（SSOR/RBSSOR 前処理を選択可能） | `--cg-precond`, `--cg-precond-iters` |
 | MG | `mg-uniform-taylor` | Taylor スムーザを用いた V-cycle | `--M`, `--dt`/`--Fo`, `--bc-order`, `--mg-interval`, `--mg-M`, `--mg-dt-scale`, `--mg-nu1`, `--mg-nu2` |
 | MG | `mg-hierarchical-taylor` | レベルごとに `M` と `dt` を変えるスムーザ設定 | `--M`, `--dt`/`--Fo`, `--bc-order`, `--mg-interval`, `--mg-M`, `--mg-dt-scale`, `--mg-nu1`, `--mg-nu2`, `--mg-level-Ms`, `--mg-level-dt-scales` |
 | MG | `mg-correction-taylor` | coarse 補正方程式 $L e = -r$ を Taylor 擬似時間で解く | `--M`, `--dt`/`--Fo`, `--bc-order`, `--mg-interval`, `--mg-M`, `--mg-dt-scale`, `--mg-nu1`, `--mg-nu2`, `--mg-corr-M`, `--mg-corr-dt-scale`, `--mg-corr-steps`, `--mg-corr-nu1`, `--mg-corr-nu2` |
@@ -62,10 +66,12 @@ julia --project scripts/run_solver.jl --n 32 --M 10 --dt 1e-4 --max-steps 10000 
   - Taylor 系（`taylor` / `mg-*`）のみ有効（反復解法では `second` に固定）
   - `fourth` は 4次差分（半径2、各軸5点）を使用
 - `--output-dir`: 出力ディレクトリ（デフォルト: `results`。存在しない場合は作成）
-- `--solver`: 実行するソルバー（`taylor` / `sor` / `ssor` / `cg` / `mg-uniform-taylor` / `mg-hierarchical-taylor` / `mg-correction-taylor`。デフォルト: `taylor`）
-- `--omega`: 緩和係数（`--solver sor|ssor` で使用、デフォルト: `1.0`）
-  - `--solver cg --cg-precond ssor` の場合は **必須**
-- `--cg-precond`: CG の前処理（`ssor` / `none`、デフォルト: `none`）
+- `--solver`: 実行するソルバー（`taylor` / `sor` / `rbsor` / `ssor` / `rbssor` / `cg` / `mg-uniform-taylor` / `mg-hierarchical-taylor` / `mg-correction-taylor`。デフォルト: `taylor`）
+- `--omega`: 緩和係数（`--solver sor|rbsor|ssor|rbssor` で使用、デフォルト: `1.0`）
+  - `--solver cg --cg-precond ssor|rbssor` の場合は **必須**
+- `--cg-precond`: CG の前処理（`none` / `ssor` / `rbssor`、デフォルト: `none`）
+- `--cg-precond-iters`: CG 前処理の反復回数（`--solver cg` のとき有効）
+  - 未指定時の既定値は `ssor=2`, `rbssor=1`（同程度の計算量に合わせる）
 - `--mg-interval`: MG補正の適用間隔（0 で無効、デフォルト: 0）
   - `--solver mg-*` の場合、未指定なら 5 に自動設定される（非 MG では無視される）
 - レベル1/2（疑似MG/2-level MG）は実験済みで不採用のため、MG加速は V-cycle のみ対応
@@ -121,9 +127,17 @@ julia --project -e 'using ADPoisson; n=32; dt=0.1/(3n^2); max_steps=Int(ceil(0.5
 julia --project scripts/run_solver.jl --solver cg --cg-precond ssor --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
 ```
 
+```bash
+julia --project scripts/run_solver.jl --solver cg --cg-precond rbssor --cg-precond-iters 1 --omega 1.0 --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
+```
+
 **反復解法（SOR）実行例**
 ```bash
 julia --project scripts/run_solver.jl --solver sor --omega 1.0 --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
+```
+
+```bash
+julia --project scripts/run_solver.jl --solver rbsor --omega 1.0 --nx 32 --ny 32 --nz 32 --max-steps 2000 --epsilon 1e-8 --alpha 1.0 --output-dir results
 ```
 
 **Uniform Taylor (V-cycle MG) 実行例**
@@ -195,7 +209,7 @@ julia --project scripts/compare_taylor.jl --solver sor --nx 32 --ny 32 --nz 32 -
 ```bash
 julia --project scripts/compare_solvers.jl --solvers taylor,sor,ssor,cg --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --output-dir results
 ```
-`--cg-precond` は CG を含む場合のみ使用します（`none`/`ssor`）。
+`--cg-precond` は CG を含む場合のみ使用します（`none`/`ssor`/`rbssor`）。
 ```bash
 julia --project scripts/compare_solvers.jl --solvers taylor,cg --cg-precond ssor --nx 32 --ny 32 --nz 32 --M 10 --dt 1e-4 --max-steps 10000 --epsilon 1e-6 --alpha 1.0 --bc-order high --output-dir results
 ```

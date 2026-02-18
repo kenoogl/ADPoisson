@@ -1,7 +1,6 @@
 experiment:
   name: taylor_64_uniform
   description: 以前の結果と修正コードの結果が一致するかを確認する
-
 problem:
   equation: poisson
   dimension: 3
@@ -11,7 +10,6 @@ problem:
   boundary_condition:
     type: dirichlet
     solution: analytic
-
 discretization:
   grid:
     nx: 64
@@ -19,20 +17,16 @@ discretization:
     nz: 64
   layout: cell-centered
   ghost_cells: 2
-
 solver:
   method: taylor
   type: uniform
-
 convergence:
   residual_norm: L2
   tolerance: 1.0e-8
   max_iterations: 5000
-
 output:
   results_dir: results/taylor_64_uniform
   save_residual_history: true
-
 run:
   solver: mg-uniform-taylor
   n: 64
@@ -49,11 +43,9 @@ run:
   mg_nu2: 1
   lap_order: second
   output_dir: results/taylor_64_uniform
-
 execution:
   command: >
-    julia --project scripts/run_solver.jl
-    --config experiments/taylor_64_uniform/config.yaml
+    julia --project scripts/run_solver.jl --config experiments/taylor_64_uniform/config.yaml
 
 postprocess:
   commands:

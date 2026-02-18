@@ -37,7 +37,7 @@ end
 
 function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol,
                       lap_order::Symbol, output_dir::String, solver::Symbol,
-                      cg_precond::Symbol, omega::Float64)
+                      cg_precond::Symbol, cg_precond_iters::Int, omega::Float64)
     warm_dir = joinpath(output_dir, "_warmup")
     isdir(warm_dir) || mkpath(warm_dir)
     warm_config = SolverConfig(config.nx, config.ny, config.nz, config.M, config.dt, 1, 0.0)
@@ -45,10 +45,15 @@ function warmup_solve(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol,
         solve(warm_config, prob; bc_order=bc_order, lap_order=lap_order, output_dir=warm_dir)
     elseif solver === :sor
         sor_solve(prob, warm_config; omega=omega, bc_order=bc_order, output_dir=warm_dir)
+    elseif solver === :rbsor
+        rbsor_solve(prob, warm_config; omega=omega, bc_order=bc_order, output_dir=warm_dir)
     elseif solver === :ssor
         ssor_solve(prob, warm_config; omega=omega, bc_order=bc_order, output_dir=warm_dir)
+    elseif solver === :rbssor
+        rbssor_solve(prob, warm_config; omega=omega, bc_order=bc_order, output_dir=warm_dir)
     elseif solver === :cg
         cg_solve(prob, warm_config; precond=cg_precond, omega_ssor=omega,
+                 precond_iters=cg_precond_iters,
                  bc_order=bc_order, output_dir=warm_dir)
     else
         error("unknown solver: $(solver)")
@@ -212,6 +217,8 @@ function apply_run_config!(opts, run, seen)
             end
         elseif key == "solver" || key == "cg_precond" || key == "bc_order" || key == "lap_order"
             opts[key] = lowercase(to_string(val))
+        elseif key == "cg_precond_iters"
+            opts[key] = to_int(val)
         elseif key == "mg_level_Ms"
             opts[key] = to_int_list(val)
         elseif key == "mg_level_dt_scales"
@@ -339,6 +346,7 @@ function parse_args(args)
     opts["debug_residual"] = false
     opts["debug_vcycle"] = false
     opts["omega_set"] = false
+    opts["cg_precond_iters"] = 0
 
     load_config_into_opts!(opts, find_config_path(args))
 
@@ -370,6 +378,8 @@ function parse_args(args)
                 opts["solver"] = lowercase(args[i + 1])
             elseif key == "cg-precond" || key == "cg_precond"
                 opts["cg_precond"] = lowercase(args[i + 1])
+            elseif key == "cg-precond-iters" || key == "cg_precond_iters"
+                opts["cg_precond_iters"] = parse(Int, args[i + 1])
             elseif key == "omega"
                 opts["omega"] = parse(Float64, args[i + 1])
                 opts["omega_set"] = true
@@ -432,7 +442,11 @@ function history_filename(config::SolverConfig, solver::Symbol, steps::Int)
         return "history_$(tag).txt"
     elseif solver === :sor
         return "history_sor_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(steps).txt"
+    elseif solver === :rbsor
+        return "history_sor_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(steps).txt"
     elseif solver === :ssor
+        return "history_ssor_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(steps).txt"
+    elseif solver === :rbssor
         return "history_ssor_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(steps).txt"
     else
         return "history_cg_nx$(config.nx)_ny$(config.ny)_nz$(config.nz)_steps$(steps).txt"
@@ -459,7 +473,8 @@ function write_run_summary_for_solution(run_dir::AbstractString, config::SolverC
 end
 
 function resolve_solver_mode(solver_mode::AbstractString)
-    if solver_mode == "taylor" || solver_mode == "sor" || solver_mode == "ssor" || solver_mode == "cg"
+    if solver_mode == "taylor" || solver_mode == "sor" || solver_mode == "rbsor" ||
+       solver_mode == "ssor" || solver_mode == "rbssor" || solver_mode == "cg"
         return Symbol(solver_mode), false, "uniform", "classic"
     elseif solver_mode == "mg-uniform-taylor"
         return :taylor, true, "uniform", "classic"
@@ -468,11 +483,11 @@ function resolve_solver_mode(solver_mode::AbstractString)
     elseif solver_mode == "mg-correction-taylor"
         return :taylor, true, "uniform", "correction-taylor"
     end
-    error("solver must be taylor/sor/ssor/cg/mg-uniform-taylor/mg-hierarchical-taylor/mg-correction-taylor")
+    error("solver must be taylor/sor/rbsor/ssor/rbssor/cg/mg-uniform-taylor/mg-hierarchical-taylor/mg-correction-taylor")
 end
 
 function print_run_config(config::SolverConfig, prob::ProblemSpec, bc_order::Symbol, lap_order::Symbol,
-                          solver_mode::AbstractString, solver::Symbol, cg_precond::Symbol, omega::Float64,
+                          solver_mode::AbstractString, solver::Symbol, cg_precond::Symbol, cg_precond_iters::Int, omega::Float64,
                           mg_vcycle::Bool, mg_vcycle_mode::AbstractString, mg_interval::Int, mg_dt_scale::Float64,
                           mg_M::Int, mg_nu1::Int, mg_nu2::Int, mg_correction::AbstractString,
                           mg_corr_M::Int, mg_corr_dt_scale::Float64, mg_corr_steps::Int, mg_corr_nu1::Int, mg_corr_nu2::Int,
@@ -483,11 +498,11 @@ function print_run_config(config::SolverConfig, prob::ProblemSpec, bc_order::Sym
     @printf("  alpha=%.6f bc_order=%s lap_order=%s\n", prob.alpha, string(bc_order), string(lap_order))
     @printf("  solver=%s\n", solver_mode)
     if solver === :cg
-        @printf("  cg_precond=%s\n", string(cg_precond))
-        if cg_precond === :ssor
+        @printf("  cg_precond=%s cg_precond_iters=%d\n", string(cg_precond), cg_precond_iters)
+        if cg_precond === :ssor || cg_precond === :rbssor
             @printf("  omega=%.6f\n", omega)
         end
-    elseif solver === :sor || solver === :ssor
+    elseif solver === :sor || solver === :rbsor || solver === :ssor || solver === :rbssor
         @printf("  omega=%.6f\n", omega)
     end
     if mg_vcycle && mg_interval > 0
@@ -524,6 +539,7 @@ function prepare_run_context(opts)
     solver, mg_vcycle, mg_vcycle_mode, mg_correction = resolve_solver_mode(solver_mode)
 
     cg_precond = Symbol(lowercase(opts["cg_precond"]))
+    cg_precond_iters = Int(opts["cg_precond_iters"])
     omega = Float64(opts["omega"])
     mg_interval = Int(opts["mg_interval"])
     mg_M = Int(opts["mg_M"])
@@ -548,12 +564,20 @@ function prepare_run_context(opts)
         mg_interval = 5
     end
 
-    (cg_precond === :ssor || cg_precond === :none) || error("cg-precond must be ssor/none")
-    if solver === :cg && cg_precond === :ssor && !Bool(opts["omega_set"])
-        error("omega is required when --solver=cg and --cg-precond=ssor")
+    (cg_precond === :ssor || cg_precond === :rbssor || cg_precond === :none) || error("cg-precond must be none/ssor/rbssor")
+    if solver === :cg && (cg_precond === :ssor || cg_precond === :rbssor) && !Bool(opts["omega_set"])
+        error("omega is required when --solver=cg and --cg-precond=ssor|rbssor")
     end
-    if solver === :sor || solver === :ssor
+    if solver === :sor || solver === :rbsor || solver === :ssor || solver === :rbssor
         omega > 0 || error("omega must be > 0")
+    end
+    if solver === :cg
+        if cg_precond_iters < 0
+            error("cg-precond-iters must be >= 0")
+        end
+        if cg_precond !== :none && cg_precond_iters == 0
+            cg_precond_iters = (cg_precond === :ssor ? 2 : 1)
+        end
     end
 
     if !mg_vcycle && ((mg_level_Ms !== nothing) || (mg_level_dt_scales !== nothing))
@@ -581,13 +605,13 @@ function prepare_run_context(opts)
         lap_order = :second
     end
 
-    print_run_config(config, prob, bc_order, lap_order, solver_mode, solver, cg_precond, omega,
+    print_run_config(config, prob, bc_order, lap_order, solver_mode, solver, cg_precond, cg_precond_iters, omega,
                      mg_vcycle, mg_vcycle_mode, mg_interval, mg_dt_scale, mg_M, mg_nu1, mg_nu2,
                      mg_correction, mg_corr_M, mg_corr_dt_scale, mg_corr_steps, mg_corr_nu1, mg_corr_nu2,
                      output_dir, run_dir)
 
     return (config=config, prob=prob, bc_order=bc_order, lap_order=lap_order,
-            solver_mode=solver_mode, solver=solver, cg_precond=cg_precond, omega=omega,
+            solver_mode=solver_mode, solver=solver, cg_precond=cg_precond, cg_precond_iters=cg_precond_iters, omega=omega,
             mg_interval=mg_interval, mg_dt_scale=mg_dt_scale, mg_M=mg_M, mg_nu1=mg_nu1, mg_nu2=mg_nu2,
             mg_level_Ms=mg_level_Ms, mg_level_dt_scales=mg_level_dt_scales, mg_vcycle=mg_vcycle,
             use_hierarchical_taylor=use_hierarchical_taylor, mg_correction=mg_correction,
@@ -607,6 +631,7 @@ function main()
     solver_mode = ctx.solver_mode
     solver = ctx.solver
     cg_precond = ctx.cg_precond
+    cg_precond_iters = ctx.cg_precond_iters
     omega = ctx.omega
     mg_interval = ctx.mg_interval
     mg_dt_scale = ctx.mg_dt_scale
@@ -627,7 +652,7 @@ function main()
     debug_vcycle = ctx.debug_vcycle
     run_dir = ctx.run_dir
     config_path = opts["config_path"]
-    warmup_solve(config, prob, bc_order, lap_order, run_dir, solver, cg_precond, omega)
+    warmup_solve(config, prob, bc_order, lap_order, run_dir, solver, cg_precond, cg_precond_iters, omega)
     sol, runtime = if solver === :taylor
         correction_mode = (mg_correction == "correction-taylor") ? :correction_taylor : :classic
         solve_with_runtime(config, prob; bc_order=bc_order, lap_order=lap_order, output_dir=run_dir,
@@ -641,10 +666,15 @@ function main()
                            debug_residual=debug_residual, debug_vcycle=debug_vcycle)
     elseif solver === :sor
         sor_solve_with_runtime(prob, config; omega=omega, bc_order=bc_order, output_dir=run_dir)
+    elseif solver === :rbsor
+        rbsor_solve_with_runtime(prob, config; omega=omega, bc_order=bc_order, output_dir=run_dir)
     elseif solver === :ssor
         ssor_solve_with_runtime(prob, config; omega=omega, bc_order=bc_order, output_dir=run_dir)
+    elseif solver === :rbssor
+        rbssor_solve_with_runtime(prob, config; omega=omega, bc_order=bc_order, output_dir=run_dir)
     else
         cg_solve_with_runtime(prob, config; precond=cg_precond, omega_ssor=omega,
+                              precond_iters=cg_precond_iters,
                               bc_order=bc_order, output_dir=run_dir)
     end
     has_nonfinite = any(x -> !isfinite(x), sol.u)

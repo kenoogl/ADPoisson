@@ -1,0 +1,356 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<USAGE
+Usage:
+  ./bin/generate_notes <exp_name> [MODE] [OPTIONS]
+
+Modes (default: --stdout-prompt):
+  --stdout-prompt   Print prompt only (no LLM call)
+  --llm-external    Call external LLM command and update notes.md
+  --llm-internal    Print internal-LLM prompt and exit (no LLM call)
+
+Options:
+  --llm-cmd "<cmd>"  External LLM command (or RW_LLM_CMD)
+  --dry-run          Show result/diff only, no write
+  --force            Recreate notes.md template
+  --backup           Create backup before update (default: on)
+  -h, --help         Show help
+USAGE
+}
+
+template_notes() {
+  local exp="$1"
+  cat <<TEMPLATE
+# Experiment Notes: ${exp}
+
+---
+
+## 1. AI Summary (Facts)
+
+(ここにAIが書く)
+
+---
+
+## 2. AI Analysis (Evaluation)
+
+(ここにAIが書く)
+
+---
+
+## 3. Human Thoughts (Decision)
+
+(ここは人間が書く)
+
+---
+TEMPLATE
+}
+
+EXP_NAME=""
+MODE="stdout-prompt"
+LLM_CMD=""
+DRY_RUN=false
+FORCE=false
+BACKUP=true
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --stdout-prompt)
+      MODE="stdout-prompt"
+      shift
+      ;;
+    --llm-external)
+      MODE="llm-external"
+      shift
+      ;;
+    --llm-internal)
+      MODE="llm-internal"
+      shift
+      ;;
+    --llm-cmd)
+      [ "$#" -ge 2 ] || { echo "[error] --llm-cmd requires value" >&2; exit 1; }
+      LLM_CMD="$2"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    --force)
+      FORCE=true
+      shift
+      ;;
+    --backup)
+      BACKUP=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "[error] Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      if [ -n "$EXP_NAME" ]; then
+        echo "[error] exp_name must be specified once" >&2
+        usage >&2
+        exit 1
+      fi
+      EXP_NAME="$1"
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$EXP_NAME" ]; then
+  usage >&2
+  exit 1
+fi
+
+CONFIG_PATH="experiments/${EXP_NAME}/config.yaml"
+SUMMARY_PATH="results/${EXP_NAME}/run_summary.json"
+NOTES_PATH="experiments/${EXP_NAME}/notes.md"
+INTENT_PATH="ai_context/intent.md"
+TS="$(date +%Y%m%d_%H%M%S)"
+
+# Step 1: required file checks
+[ -f "$CONFIG_PATH" ] || { echo "[error] Missing ${CONFIG_PATH}" >&2; exit 1; }
+[ -f "$SUMMARY_PATH" ] || { echo "[error] Missing ${SUMMARY_PATH}" >&2; exit 1; }
+
+# Step 2: notes.md preparation
+if [ "$FORCE" = true ]; then
+  if [ "$DRY_RUN" = true ]; then
+    echo "[info] dry-run: would recreate ${NOTES_PATH}" >&2
+  else
+    template_notes "$EXP_NAME" > "$NOTES_PATH"
+    echo "[info] Recreated ${NOTES_PATH}" >&2
+  fi
+elif [ ! -f "$NOTES_PATH" ]; then
+  if [ "$DRY_RUN" = true ]; then
+    echo "[info] dry-run: would create ${NOTES_PATH}" >&2
+  else
+    template_notes "$EXP_NAME" > "$NOTES_PATH"
+    echo "[info] Created ${NOTES_PATH}" >&2
+  fi
+fi
+
+build_embedded_prompt() {
+  local config_text summary_text intent_text
+  config_text="$(cat "$CONFIG_PATH")"
+  summary_text="$(cat "$SUMMARY_PATH")"
+  if [ -f "$INTENT_PATH" ]; then
+    intent_text="$(cat "$INTENT_PATH")"
+  else
+    intent_text="(intent.md は存在しません)"
+  fi
+  cat <<PROMPT_EOF
+あなたは研究アシスタントです。
+
+以下の情報を基に、
+experiments/${EXP_NAME}/notes.md の
+「AI Summary」と「AI Analysis」を日本語で生成してください。
+
+【入力1: config.yaml】
+${config_text}
+
+【入力2: run_summary.json】
+${summary_text}
+
+【入力3: intent.md（あれば）】
+${intent_text}
+
+出力形式は必ず以下に従うこと。
+
+---
+# Experiment Notes: ${EXP_NAME}
+
+## 1. AI Summary (Facts)
+・実験の要約（事実のみ）
+・runtime
+・異常有無
+※解釈しない
+
+---
+
+## 2. AI Analysis (Evaluation)
+
+### Alignment with Intent
+・成功基準との整合性
+
+### Hypotheses
+・仮説候補
+
+### Comparison
+・他実験との位置づけ
+
+### Minimal Next Experiment
+・次にやるべき最小実験を1つだけ提案
+PROMPT_EOF
+}
+
+build_reference_prompt() {
+  local intent_ref
+  if [ -f "$INTENT_PATH" ]; then
+    intent_ref="- ${INTENT_PATH}"
+  else
+    intent_ref="- ${INTENT_PATH} (not found)"
+  fi
+  cat <<PROMPT_EOF
+あなたは研究アシスタントです。
+
+以下の参照ファイルを読み、${NOTES_PATH} の
+「AI Summary」と「AI Analysis」を日本語で作成してください。
+「Human Thoughts」は変更しないでください。
+
+参照:
+${intent_ref}
+- ${CONFIG_PATH}
+- ${SUMMARY_PATH}
+
+更新先:
+- ${NOTES_PATH}
+
+出力形式は必ず以下に従うこと。
+
+## 1. AI Summary (Facts)
+・実験の要約（事実のみ）
+・runtime
+・異常有無
+※解釈しない
+
+---
+
+## 2. AI Analysis (Evaluation)
+
+### Alignment with Intent
+・成功基準との整合性
+
+### Hypotheses
+・仮説候補
+
+### Comparison
+・他実験との位置づけ
+
+### Minimal Next Experiment
+・次にやるべき最小実験を1つだけ提案
+PROMPT_EOF
+}
+
+if [ "$MODE" = "stdout-prompt" ]; then
+  PROMPT="$(build_reference_prompt)"
+  printf "%s\n" "$PROMPT"
+  exit 0
+fi
+
+if [ "$MODE" = "llm-internal" ]; then
+  PROMPT="$(build_reference_prompt)"
+  printf "%s\n\n" "$PROMPT"
+  cat <<INTERNAL_EOF
+You are inside LLM CLI.
+Write AI Summary and AI Analysis into: ${NOTES_PATH}
+Only replace sections 1 and 2.
+INTERNAL_EOF
+  exit 0
+fi
+
+# llm-external
+if [ "$MODE" = "llm-external" ] && [ -z "$LLM_CMD" ]; then
+  LLM_CMD="${RW_LLM_CMD:-}"
+fi
+if [ -z "$LLM_CMD" ]; then
+  echo "[error] LLM command is not set. Use --llm-cmd or RW_LLM_CMD." >&2
+  exit 1
+fi
+# codex run is interactive; switch to non-interactive command
+if printf "%s" "$LLM_CMD" | grep -Eq '(^|[[:space:]])codex[[:space:]]+run([[:space:]]|$)'; then
+  LLM_CMD="$(printf "%s" "$LLM_CMD" | sed -E 's/(^|[[:space:]])codex[[:space:]]+run([[:space:]]|$)/\1codex exec\2/g')"
+  echo "[info] Replaced 'codex run' with 'codex exec' for non-interactive mode." >&2
+fi
+
+if [ "$MODE" = "llm-external" ]; then
+  PROMPT="$(build_embedded_prompt)"
+fi
+LLM_OUTPUT="$(printf "%s\n" "$PROMPT" | bash -lc "$LLM_CMD")"
+
+# Safety checks
+if [ -z "${LLM_OUTPUT//[[:space:]]/}" ]; then
+  echo "[error] LLM output is empty." >&2
+  exit 1
+fi
+if ! printf "%s\n" "$LLM_OUTPUT" | grep -Eq '^## 1\. AI Summary'; then
+  echo "[error] Invalid output: missing '## 1. AI Summary'." >&2
+  exit 1
+fi
+if ! printf "%s\n" "$LLM_OUTPUT" | grep -Eq '^## 2\. AI Analysis'; then
+  echo "[error] Invalid output: missing '## 2. AI Analysis'." >&2
+  exit 1
+fi
+
+CUR_NOTES=""
+if [ -f "$NOTES_PATH" ]; then
+  CUR_NOTES="$(cat "$NOTES_PATH")"
+else
+  CUR_NOTES="$(template_notes "$EXP_NAME")"
+fi
+
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+CUR_FILE="$TMP_DIR/current.md"
+OUT_FILE="$TMP_DIR/output.md"
+printf "%s\n" "$CUR_NOTES" > "$CUR_FILE"
+printf "%s\n" "$LLM_OUTPUT" > "$OUT_FILE"
+
+UPDATED_NOTES="$(python3 - "$CUR_FILE" "$OUT_FILE" <<'PY'
+import sys
+from pathlib import Path
+
+notes = Path(sys.argv[1]).read_text()
+llm = Path(sys.argv[2]).read_text()
+
+sum_pos = llm.find("## 1. AI Summary")
+ana_pos = llm.find("## 2. AI Analysis")
+if sum_pos == -1 or ana_pos == -1 or ana_pos < sum_pos:
+    print("__ERROR__:bad_output")
+    raise SystemExit(0)
+
+n_sum = notes.find("## 1. AI Summary")
+n_human = notes.find("## 3. Human Thoughts")
+if n_sum == -1 or n_human == -1 or n_human < n_sum:
+    print("__ERROR__:broken_notes")
+    raise SystemExit(0)
+
+replace_block = llm[sum_pos:].strip() + "\n\n---\n\n"
+updated = notes[:n_sum] + replace_block + notes[n_human:]
+print(updated.rstrip() + "\n")
+PY
+)"
+
+if [ "$UPDATED_NOTES" = "__ERROR__:bad_output" ]; then
+  echo "[error] Invalid output format." >&2
+  exit 1
+fi
+if [ "$UPDATED_NOTES" = "__ERROR__:broken_notes" ]; then
+  echo "[error] notes.md structure broken." >&2
+  exit 1
+fi
+
+if [ "$DRY_RUN" = true ]; then
+  NEW_FILE="$TMP_DIR/new.md"
+  printf "%s" "$UPDATED_NOTES" > "$NEW_FILE"
+  diff -u "$CUR_FILE" "$NEW_FILE" || true
+  exit 0
+fi
+
+if [ "$BACKUP" = true ] && [ -f "$NOTES_PATH" ]; then
+  cp "$NOTES_PATH" "${NOTES_PATH}.bak.${TS}"
+fi
+printf "%s" "$UPDATED_NOTES" > "$NOTES_PATH"
+
+echo "[ok] Updated: ${NOTES_PATH}" >&2
+if [ "$BACKUP" = true ]; then
+  echo "[ok] Backup: ${NOTES_PATH}.bak.${TS}" >&2
+fi

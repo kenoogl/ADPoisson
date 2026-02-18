@@ -22,6 +22,8 @@ export exact_solution, source_term, dirichlet_bc
 export plot_slice
 export sor_solve, sor_solve!, sor_solve_with_runtime
 export ssor_solve, ssor_solve!, ssor_solve_with_runtime
+export rbsor_solve, rbsor_solve!, rbsor_solve_with_runtime
+export rbssor_solve, rbssor_solve!, rbssor_solve_with_runtime
 export cg_solve, cg_solve!, cg_solve_with_runtime
 export restrict_full_weighting!, prolong_trilinear!, vcycle!
 export correction_taylor_solve!

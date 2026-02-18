@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-02-17T11:49:40",
+  "config_path": "experiments/ssor_n32_omega1.2/config.yaml",
+  "script": "scripts/run_solver.jl",
+
+  "iterations": 411,
+  "runtime_sec": 0.15019512176513672,
+
+  "converged": true,
+  "residual_l2": "9.803688e-9",
+  "error_l2": 0.0004417582509775097,
+  "error_max": 0.0021525319437019075,
+  "artifacts": {
+    "history": "history_ssor_nx32_ny32_nz32_steps411.txt"
+  }
+}

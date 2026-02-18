@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-ln -sf framework/hooks/pre-commit .git/hooks/pre-commit
-chmod +x framework/hooks/pre-commit
-echo "Hooks installed."
+set -euo pipefail
 
+ln -sf ../../hooks/pre-commit .git/hooks/pre-commit
+chmod +x hooks/pre-commit
+echo "Hooks installed."

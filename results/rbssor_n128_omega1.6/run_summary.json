@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-02-17T11:46:43",
+  "config_path": "experiments/ssor_n128_omega1.6/config.yaml",
+  "script": "scripts/run_solver.jl",
+
+  "iterations": 265,
+  "runtime_sec": 4.023707151412964,
+
+  "converged": false,
+  "residual_l2": "inf",
+  "error_l2": 2.6170403973238735e146,
+  "error_max": 1.281117782086459e149,
+  "artifacts": {
+    "history": "history_ssor_nx128_ny128_nz128_steps265.txt"
+  }
+}

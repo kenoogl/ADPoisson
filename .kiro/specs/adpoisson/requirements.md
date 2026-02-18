@@ -48,19 +48,28 @@
   - 収束判定は相対残差 $\|r\|_2 / \max(\|r_0\|_2, 1) \le \epsilon$（$r=Lu-f$、内点のみ）で統一する
   - 線形系は内点のみの方程式として構成し、Dirichlet境界の寄与は RHS に取り込む
   - 収束履歴（`step`, `err_l2`, `res_l2`）を出力し、収束性を比較できるようにする
-    - SOR: `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
-    - SSOR: `history_ssor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+    - SOR系（point/RB 共通）: `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+    - SSOR系（point/RB 共通）: `history_ssor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
     - CG: `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
   - 反復ループ内（内点更新）では `if` 分岐を使わず、事前に条件分岐を外へ出す
   - SOR の緩和係数 $\omega$ は入力パラメータ `--omega` で指定可能とする（既定値 1.0）
   - CG の前処理はオプション指定とし、既定は **none**
-    - 指定: `:none`（既定） / `:ssor`
-    - SSOR 使用時の緩和係数 $\omega$ は入力パラメータ `--omega` で指定可能とする（既定値 1.0）
+    - 指定: `:none`（既定） / `:ssor`（point-SSOR） / `:rbssor`
+    - SSOR 系使用時の緩和係数 $\omega$ は入力パラメータ `--omega` で指定可能とする（既定値 1.0）
+    - 前処理反復回数（同一CG反復内）を指定可能とし、既定は計算量等価で次とする
+      - `:ssor`（point-SSOR）: **2 回**
+      - `:rbssor`: **1 回**
+    - `--cg-precond-iters` で前処理反復回数を上書き可能とする（`--solver=cg` でのみ有効）
     - **RBSSOR の対称スイープ順**: 前進 R→B、後退 B→R、前進 B→R、後退 R→B（R=red, B=black）
-    - SSOR 前処理では `order=:spec` を固定する（`order=:high` は使わない）
-  - SSOR ソルバー（RBSSOR）を選択可能とする
-  - CLI は `--solver` で `taylor/sor/ssor/cg/mg-uniform-taylor/mg-hierarchical-taylor/mg-correction-taylor` を指定し、`--cg-precond` は `--solver=cg` のときのみ有効
-  - `--omega` は `--solver=sor|ssor` で有効、`--solver=cg --cg-precond=ssor` では必須
+    - SSOR 系前処理では `order=:spec` を固定する（`order=:high` は使わない）
+    - CG の前処理は対称正定を保つため SSOR 系のみを許可し、SOR/RBSOR は許可しない
+  - ソルバー名称は次の対応とする
+    - `sor`: point-SOR（新規）
+    - `rbsor`: 既存 RB-SOR
+    - `ssor`: point-SSOR（新規、point-SOR の前進/後退）
+    - `rbssor`: 既存 RBSSOR
+  - CLI は `--solver` で `taylor/sor/rbsor/ssor/rbssor/cg/mg-uniform-taylor/mg-hierarchical-taylor/mg-correction-taylor` を指定し、`--cg-precond` は `--solver=cg` のときのみ有効
+  - `--omega` は `--solver=sor|rbsor|ssor|rbssor` で有効、`--solver=cg --cg-precond=ssor|rbssor` では必須
   - Taylor 系では `--lap-order second|fourth` を受け付ける（非Taylorソルバーでは `second` 固定）
 - [ ] **加速（マルチグリッド的アプローチ）**
   - Taylor 擬似時間法の残差履歴が「高周波が早く減衰し低周波が残る」挙動であるため、マルチグリッド的加速を検討する
@@ -209,8 +218,9 @@
 ## Julia実装
 - パラメータはコマンドラインで指定
   - $N_x, N_y, N_z$（または `n` で等方格子指定）, Taylor展開次数 $M$, $\Delta t$ または $Fo$, 最大ステップ数, 境界条件次数（`spec`/`high`）, 出力ディレクトリ
-  - ソルバー指定: `--solver taylor|sor|ssor|cg|mg-uniform-taylor|mg-hierarchical-taylor|mg-correction-taylor`（既定 `taylor`）
-  - 前処理指定: `--cg-precond none|ssor`（`--solver=cg` の場合のみ有効）
+  - ソルバー指定: `--solver taylor|sor|rbsor|ssor|rbssor|cg|mg-uniform-taylor|mg-hierarchical-taylor|mg-correction-taylor`（既定 `taylor`）
+  - 前処理指定: `--cg-precond none|ssor|rbssor`（`--solver=cg` の場合のみ有効）
+  - 前処理反復回数指定: `--cg-precond-iters <Int>`（`--solver=cg` の場合のみ有効）
   - ラプラシアン次数指定: `--lap-order second|fourth`（既定 `second`）
     - `--solver` が `taylor` 以外の場合は `second` に固定する
     - `fourth` は ghost 2層実装完了まで使用不可（実行時エラー）

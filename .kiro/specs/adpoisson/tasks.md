@@ -97,9 +97,9 @@
   - 単体テスト（laplacian!, taylor_step!）は Phase 2 完了時点で実行可能
   - _Requirements: 検証機能_
 
-## Phase 4: 線形ソルバー（SOR/SSOR/CG）
+## Phase 4: 線形ソルバー（RBSOR/RBSSOR/CG）
 > Phase 3 完了後に開始
-- [x] 12. SOR ソルバーの実装 (`src/sor.jl`)（内点のみ、Dirichlet境界の寄与は RHS に取り込み）
+- [x] 12. RBSOR ソルバーの実装 (`src/sor.jl`)（内点のみ、Dirichlet境界の寄与は RHS に取り込み）
   - RB-SOR 反復
   - 緩和係数 `omega` を入力パラメータとして受け取る（既定 1.0）
   - 相対残差 $\|r\|_2/\max(\|r_0\|_2,1)$ による収束判定
@@ -108,7 +108,7 @@
   - depends: [5a, 6]
   - _Requirements: 線形ソルバー_
   - _Design: 線形ソルバー（SOR）_
-- [x] 12b. SSOR ソルバーの実装 (`src/sor.jl`)
+- [x] 12b. RBSSOR ソルバーの実装 (`src/sor.jl`)
   - RBSSOR（4スイープ対称）による反復
   - 緩和係数 `omega` を入力パラメータとして受け取る（既定 1.0）
   - 収束履歴の出力（`step`, `err_l2`, `res_l2`）
@@ -310,3 +310,42 @@
   - depends: [36]
   - _Requirements: 実験実行構成（run_exp / config駆動）_
   - _Design: 実験実行（bin/run_exp, config駆動）_
+
+## Phase 11: point-SOR / point-SSOR 追加と命名整理
+- [ ] 38. point-SOR ソルバー追加 (`src/sor.jl`)
+  - `sor` を point-SOR（lexicographic）として実装
+  - 既存 RB-SOR は `rbsor` として明示化
+  - 履歴ファイルは SOR系で共通 `history_sor_*.txt` を使用
+  - depends: [12]
+  - _Requirements: 線形ソルバー（SOR/CG）_
+  - _Design: 線形ソルバー（SOR/RBSOR）_
+- [ ] 39. point-SSOR / RBSSOR の分離 (`src/sor.jl`)
+  - `ssor` を point-SSOR（point-SOR の前進/後退）として実装
+  - 既存 RBSSOR は `rbssor` として明示化
+  - 履歴ファイルは SSOR系で共通 `history_ssor_*.txt` を使用
+  - depends: [12b, 38]
+  - _Requirements: 線形ソルバー（SOR/CG）_
+  - _Design: 線形ソルバー（SSOR/RBSSOR）_
+- [ ] 40. CG 前処理拡張 (`src/cg.jl`)
+  - `--cg-precond none|ssor|rbssor` を実装
+  - `ssor_precond!`（point）と `rbssor_precond!`（RB）を分離
+  - `--omega` 必須条件を `cg-precond=ssor|rbssor` に適用
+  - `precond_iters` を導入し、既定値を `ssor=2`, `rbssor=1`（計算量等価）に設定
+  - depends: [39]
+  - _Requirements: 線形ソルバー（SOR/CG）_
+  - _Design: 線形ソルバー（CG/前処理）_
+- [ ] 41. CLI・設定配線の更新 (`scripts/run_solver.jl`, `experiments/base/config_*.yaml`)
+  - `--solver` に `rbsor`, `rbssor` を追加
+  - `--solver=sor|rbsor|ssor|rbssor` で `--omega` を有効化
+  - `--cg-precond` の許容値を `none|ssor|rbssor` に更新
+  - `--cg-precond-iters` を追加（未指定時は `ssor=2`, `rbssor=1`）
+  - depends: [38, 39, 40]
+  - _Requirements: Julia実装_
+  - _Design: CLI引数（scripts/run_solver.jl）_
+- [ ] 42. テスト更新 (`test/solvers.jl`, `test/cli.jl`)
+  - point vs RB の SOR/SSOR が個別に動作することを検証
+  - CG 前処理 `ssor` / `rbssor` の収束テストを追加
+  - CLI の新列挙値・必須条件（omega）・`cg-precond-iters` 既定/指定上書きを検証
+  - depends: [41]
+  - _Requirements: 検証機能_
+  - _Design: テスト戦略_

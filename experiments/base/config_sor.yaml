@@ -13,7 +13,7 @@ execution:
 
 postprocess:
   commands:
-    julia --project scripts/history_stats.jl --input-dir results/__EXP_NAME__
+    - julia --project scripts/history_stats.jl --input-dir results/__EXP_NAME__
 
 run:
   solver: __SOLVER__

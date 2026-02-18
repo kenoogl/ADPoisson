@@ -41,8 +41,8 @@ ADPoisson/
 │   ├── boundary.jl        # 境界条件適用 (ghost cell 更新)
 │   ├── problems.jl        # 問題設定 (解析解, ソース項定義)
 │   ├── visualization.jl   # 可視化機能 (Plots.jl / Heatmap)
-│   ├── sor.jl             # SOR ソルバー
-│   ├── cg.jl              # CG ソルバー（SSOR 前処理）
+│   ├── sor.jl             # SOR/RBSOR/SSOR/RBSSOR ソルバー
+│   ├── cg.jl              # CG ソルバー（SSOR/RBSSOR 前処理）
 │   ├── mg.jl              # マルチグリッド補助（制限/補間/サイクル）
 │   └── factory.jl         # インスタンス生成ヘルパー
 ├── scripts/
@@ -163,7 +163,7 @@ end
 5. 擬似時間ステップ履歴を `results/` に保存（`history_nx{nx}_ny{ny}_nz{nz}_M{M}_steps{steps}.txt`）
    - 出力列: `step`, `err_l2`, `res_l2`（`res_l2` は初期残差で相対化）
 
-### 2b. 線形ソルバー（SOR/SSOR/CG）
+### 2b. 線形ソルバー（SOR/RBSOR/SSOR/RBSSOR/CG）
 擬似時間法とは別に、$\nabla^2 u = f$ を直接解く線形ソルバーを用意する。
 同一の離散化（7点差分、内点のみ、Dirichlet境界）を用い、**相対残差は初期残差で正規化**する。
 
@@ -173,24 +173,37 @@ Dirichlet境界と一様格子の 7 点ラプラシアンは係数が対称で�
 線形系は **内点のみ**で構成し **Dirichlet境界の寄与は RHS に取り込む**。
 CG 実行前に前提を満たすことを確認する。
 
-#### SOR（Red-Black）
-- 更新は RB-SOR（2色）で行う
+#### SOR（point-SOR）
+- 更新は lexicographic な point-SOR で行う
 - 反復ごとに残差 $r=Lu-f$ を計算し、相対残差 $\|r\|_2/\max(\|r_0\|_2,1)$ を記録
 - 収束判定は $\epsilon$ と `max_steps`（擬似時間と同様）
 - 履歴ファイル命名: `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 - 緩和係数 $\omega$ は CLI `--omega` で指定可能（既定 1.0）
 - 反復ループ（内点更新）は `if` 分岐なしで構成する
 
-#### SSOR（RBSSOR）
-- RBSSOR の対称 4 スイープで更新する
+#### RBSOR
+- 更新は既存の RB-SOR（2色）で行う
+- 履歴ファイル命名は SOR と共通: `history_sor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+
+#### SSOR（point-SSOR）
+- point-SOR の前進/後退スイープで更新する
 - 履歴ファイル命名: `history_ssor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
+
+#### RBSSOR
+- RBSSOR の対称 4 スイープで更新する
+- 履歴ファイル命名は SSOR と共通: `history_ssor_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
 
 #### CG（前処理付き）
 - 行列作用は明示行列を組まずに `laplacian!` を用いる
-- 前処理はオプション指定（既定 **none**、`(:none / :ssor)`）
-  - SSOR 使用時は対称性を満たす RBSSOR の 4 スイープ構成
+- 前処理はオプション指定（既定 **none**、`(:none / :ssor / :rbssor)`）
+  - `:ssor` は point-SSOR 前処理
+  - `:rbssor` は対称性を満たす RBSSOR の 4 スイープ構成
   - 前進 R→B、後退 B→R、前進 B→R、後退 R→B（R=red, B=black）
   - 緩和係数 $\omega$ は CLI `--omega` で指定可能（既定 1.0）
+  - 前処理反復回数は `precond_iters` で制御する
+    - 既定: `:ssor` は 2、`:rbssor` は 1（計算量等価）
+    - CLI `--cg-precond-iters` 指定時はその値を優先
+- CG の前処理は SPD を保つため SSOR 系のみ許可する（SOR/RBSOR は不可）
 - 収束判定・履歴出力は SOR と同じ基準
 - 出力は実験ごとの `results/<exp>/` 配下に保存し、`run_summary.json` に記録する（上書き）
 - 履歴ファイル命名: `history_cg_nx{nx}_ny{ny}_nz{nz}_steps{steps}.txt`
@@ -214,8 +227,12 @@ accumulate_taylor!(acc::Array{T,3}, coeff::Array{T,3}, dt_pow::T) where {T}
 # 係数を保持する場合の評価（検証用途のみ）
 horner_update!(u_new::Array{T,3}, coeffs::TaylorArrays3D{T}, dt::T, M::Int) where {T}
 
-# 線形ソルバー（SOR/SSOR/CG）
+# 線形ソルバー（SOR/RBSOR/SSOR/RBSSOR/CG）
 sor_solve(prob::ProblemSpec, config::SolverConfig;
+          omega::Real = 1.0, output_dir::AbstractString = "results",
+          bc_order::Symbol = :spec)
+
+rbsor_solve(prob::ProblemSpec, config::SolverConfig;
           omega::Real = 1.0, output_dir::AbstractString = "results",
           bc_order::Symbol = :spec)
 
@@ -223,11 +240,23 @@ ssor_solve(prob::ProblemSpec, config::SolverConfig;
           omega::Real = 1.0, output_dir::AbstractString = "results",
           bc_order::Symbol = :spec)
 
+rbsor_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::ProblemSpec,
+           config::SolverConfig; omega::T = one(T), output_dir::AbstractString = "results",
+           bc_order::Symbol = :spec) where {T}
+
 sor_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::ProblemSpec,
            config::SolverConfig; omega::T = one(T), output_dir::AbstractString = "results",
            bc_order::Symbol = :spec) where {T}
 
 ssor_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::ProblemSpec,
+           config::SolverConfig; omega::T = one(T), output_dir::AbstractString = "results",
+           bc_order::Symbol = :spec) where {T}
+
+rbssor_solve(prob::ProblemSpec, config::SolverConfig;
+          omega::Real = 1.0, output_dir::AbstractString = "results",
+          bc_order::Symbol = :spec)
+
+rbssor_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::ProblemSpec,
            config::SolverConfig; omega::T = one(T), output_dir::AbstractString = "results",
            bc_order::Symbol = :spec) where {T}
 ```
@@ -349,15 +378,17 @@ correction_taylor_solve!(e::Array{T,3}, r::Array{T,3}, cfg::SolverConfig;
 
 ```julia
 cg_solve(prob::ProblemSpec, config::SolverConfig;
-         precond::Symbol = :none, omega_ssor::Real = 1.0,
+         precond::Symbol = :none, precond_iters::Int = 0, omega_ssor::Real = 1.0,
          output_dir::AbstractString = "results", bc_order::Symbol = :spec)
 
 cg_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions, prob::ProblemSpec,
-          config::SolverConfig; precond::Symbol = :none, omega_ssor::T = one(T),
+          config::SolverConfig; precond::Symbol = :none, precond_iters::Int = 0, omega_ssor::T = one(T),
           output_dir::AbstractString = "results", bc_order::Symbol = :spec) where {T}
 
 ssor_precond!(z::Array{T,3}, r::Array{T,3}, bc::BoundaryConditions, config::SolverConfig;
               omega::T = one(T)) where {T}
+rbssor_precond!(z::Array{T,3}, r::Array{T,3}, bc::BoundaryConditions, config::SolverConfig;
+                omega::T = one(T)) where {T}
 ```
 
 #### Taylor係数計算と更新
@@ -444,9 +475,10 @@ $u^{n+1} = (((u_M)\Delta t + u_{M-1})\Delta t + \cdots + u_0)$
 - 形式: `julia scripts/run_solver.jl --nx=32 --ny=32 --nz=32 --M=10 --dt=1e-3 --Fo=0.3 --max-steps=10000 --epsilon=1e-10 --alpha=1.0 --bc-order high --output-dir results`
 - 必須: `--nx,--ny,--nz`
 - 任意: `--M,--dt,--Fo,--max-steps,--epsilon,--alpha,--bc-order,--lap-order,--output-dir,--omega`（`--Fo` があれば `--dt` より優先、デフォルトは requirements.md に準拠）
-- ソルバー指定: `--solver taylor|sor|ssor|cg|mg-uniform-taylor|mg-hierarchical-taylor|mg-correction-taylor`
-- SOR/SSOR 指定: `--omega`（`--solver=sor|ssor` のとき有効、既定 1.0）
-- CG + SSOR 前処理指定: `--solver=cg --cg-precond=ssor` の場合は `--omega` を必須とする
+- ソルバー指定: `--solver taylor|sor|rbsor|ssor|rbssor|cg|mg-uniform-taylor|mg-hierarchical-taylor|mg-correction-taylor`
+- SOR系指定: `--omega`（`--solver=sor|rbsor|ssor|rbssor` のとき有効、既定 1.0）
+- CG + SSOR系前処理指定: `--solver=cg --cg-precond=ssor|rbssor` の場合は `--omega` を必須とする
+- CG 前処理反復回数: `--cg-precond-iters`（未指定時は `ssor=2`, `rbssor=1`）
 - ラプラシアン次数: `--lap-order second|fourth`（既定 `second`）
   - `--solver` が `taylor` 以外の場合は `second` に固定
   - `fourth` は ghost 2層移行（Task 25-27）完了まで実行時エラー

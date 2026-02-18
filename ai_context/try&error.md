@@ -216,93 +216,6 @@ sor, ssorの加速係数omegaの最適値を探すため、config.yamlを作成
 
 
 
-##### 実験スクリプト
-
-文字列に合致するディレクトリ名を探し、run_expで実行
-
-~~~
-bin/run_exp_patterns
-
-#!/usr/bin/env bash
-set -euo pipefail
-
-usage() {
-  cat <<'EOF'
-Usage:
-  ./bin/run_exp_patterns '<pattern>'
-
-Examples:
-  ./bin/run_exp_patterns 'sor_n*_omega*'
-EOF
-}
-
-if [ $# -ne 1 ]; then
-  usage
-  exit 1
-fi
-
-PATTERN="$1"
-
-EXPS_RAW="$(find experiments -mindepth 1 -maxdepth 1 -type d -name "$PATTERN" -exec basename {} \; | sort)"
-if [ -z "$EXPS_RAW" ]; then
-  echo "No experiments matched: experiments/$PATTERN"
-  exit 0
-fi
-
-echo "Pattern: $PATTERN"
-echo "Matched experiments:"
-echo "$EXPS_RAW" | sed 's/^/  - /'
-
-FAILED=""
-SKIPPED=""
-TOTAL=0
-FAILED_N=0
-SKIPPED_N=0
-
-while IFS= read -r exp; do
-  [ -z "$exp" ] && continue
-  TOTAL=$((TOTAL + 1))
-  cfg="experiments/${exp}/config.yaml"
-  if [ ! -f "$cfg" ]; then
-    echo "[skip] missing config: $cfg"
-    SKIPPED="${SKIPPED}${exp}"$'\n'
-    SKIPPED_N=$((SKIPPED_N + 1))
-    continue
-  fi
-
-  echo "[run] $exp"
-  if ./bin/run_exp "$exp"; then
-    echo "[ok]  $exp"
-  else
-    echo "[ng]  $exp"
-    FAILED="${FAILED}${exp}"$'\n'
-    FAILED_N=$((FAILED_N + 1))
-  fi
-done <<EOF
-$EXPS_RAW
-EOF
-
-echo
-echo "===== Summary ====="
-echo "pattern : $PATTERN"
-echo "total   : $TOTAL"
-echo "failed  : $FAILED_N"
-echo "skipped : $SKIPPED_N"
-
-if [ "$FAILED_N" -gt 0 ]; then
-  echo
-  echo "Failed experiments:"
-  printf "%s" "$FAILED" | sed '/^$/d; s/^/  - /'
-fi
-
-if [ "$SKIPPED_N" -gt 0 ]; then
-  echo
-  echo "Skipped experiments (missing config):"
-  printf "%s" "$SKIPPED" | sed '/^$/d; s/^/  - /'
-fi
-
-~~~
-
 この後実験結果をみて、omega=1.6では反復回数が下がりきっていないので1.7, 1.8を追加するため、config.yamlの作成を依頼
 
 ~~~
@@ -330,7 +243,7 @@ collect_omega_runs.jlもrun_expで実行する。実行のconfig.yamlを作成�
 
 
 
-
+SOR/SSORの最小反復数の比較をさせた結果から、SSORの方が反復回数が多く、実装が怪しい可能性がでてきた。**これはAI利用で認識できた利点**
 
 
 
@@ -446,64 +359,17 @@ AIが強いのは、**比較・要約・論点抽出・反証・代替案生成*
 - 実験から仮説が自然に出てくること
 - 論文化に近づくこと
 
-
-
-##### 実験後にAIに渡すもの
-
-- config.yaml
-- logs/<exp>.json
-- results/<exp>/metrics.json（あれば）
-
-これだけ。
-
-AIは：
-
-- 要約
-- 比較
-- 仮説生成
-- 追加実験提案
-
-全部できる。
-
 ＋＋＋＋＋＋＋＋＋＋＋＋＋＋＋＋
 
 
 
-実験結果としてconfig.yaml、logs/<exp>.json、results/<exp>/metrics.jsonがあれば、効果的な支援ができる。これに加えて必要な最低限のドキュメントは何？また、これらをベースに具体的な支援シナリオを示して
-
-------
-
 
 
 ------
 
-# 🧠 なぜこれで十分か？
+### 具体的支援シナリオ
 
-AIは：
-
-- metrics → 数値
-- config → 条件
-- logs → 実行状態
-- intent → 意図
-
-この4点があれば、
-
-- 分析
-- 比較
-- 仮説生成
-- 追加実験提案
-- 論文化視点
-- Reviewer視点
-
-全部できます。
-
-
-
-------
-
-# 具体的支援シナリオ
-
-## 🎬 シナリオ1：最適値探索
+#### 🎬 シナリオ1：最適値探索
 
 #### ① 自動比較表生成
 
@@ -515,7 +381,7 @@ AIは：
 
 ------
 
-## 🎬 シナリオ2：論文化可能性判定
+#### 🎬 シナリオ2：論文化可能性判定
 
 AIに聞く：
 
@@ -530,7 +396,7 @@ AIが評価する観点：
 
 ------
 
-## 🎬 シナリオ3：ディベートモード
+#### 🎬 シナリオ3：ディベートモード
 
 あなた：
 
@@ -554,7 +420,7 @@ AI：
 
 ------
 
-## 🎬 シナリオ4：異常検出
+#### 🎬 シナリオ4：異常検出
 
 metrics.json が増えたとき：
 
@@ -569,7 +435,7 @@ AIは：
 
 ------
 
-## シナリオ５：AIに比較させる
+#### シナリオ５：AIに比較させる
 
 複数実験の logs を渡し：
 
@@ -579,7 +445,7 @@ AIは：
 
 ------
 
-## シナリオ６： 「新アイデア」を生むための最強パターン：二役ディベート
+#### シナリオ６： 「新アイデア」を生むための最強パターン：二役ディベート
 
 Judge を1体にせず、**同じ材料で2つの人格に議論させる**のが最も発想が出ます（追加の複雑さはほぼゼロ）。
 
@@ -591,144 +457,16 @@ Judge を1体にせず、**同じ材料で2つの人格に議論させる**の�
 
 ------
 
-## 3) 図表化と数値分析は「AIにやらせる」ではなく「AIが迷わない形で置く」
-
-AIが図表や分析を“思考の燃料”にするために、results に最低限これだけ出すのが効きます（Poisson/MGやSOR/SSORにも共通）。
-
-```
-results/<exp>/
-```
-
-- `metrics.json`（最重要）
-  - iterations, final_residual, runtime_sec, converged(true/false), key_params(ωなど)
-- `residual_history.csv`（あれば）
-- `figures/`（自動生成できるなら）
-
-なぜ `metrics.json` が効くか：
-AIが比較・要約・表化するとき、**CSVを逐一読ませなくても済む**からです。思考が速くなります。
 
 
 
-AIはファイルが多い、意図が曖昧、情報が散乱、だと弱い。
 
-AIが考えるための「最小の構造化」を用意するそれ以上は増やさない
+#### 振る舞いのルール
 
+複数実験を同時比較モード追加
 
-
-- `ai_contentext/atlas_notes.md > project_notes.md`　プロジェクトに関する様々なこと
-- `ai_contentext/codex_results.md > intent.md` 研究目的、ゴール、成功基準、比較
-
-- `experiments/<exp>/notes.md`　各実験のメモ
-
-- `config.yaml`　実験条件
-- `logs/<exp>.json`　実験環境
-- `results/<exp>/`　実験結果、データ、図表
-- `results/<exp>/run_summary.json`
-
-`ai_context`ディレクトリには、人が読むだけのメモなども可（この文書）
+Analyst / Reviewer 2人格モード
 
 
 
-#### run_summary.json の設計
-
-AIが「比較・仮説生成・異常検出・論文化評価」をしやすい最小構造を作成する
-
-##### 🎯 設計原則
-
-1. 人間が読める
-2. AIが比較しやすい（フラット）
-3. 実験間で必ず共通キーがある
-4. solverに依存しすぎない
-5. 将来拡張可能
-
-- AI思考支援を最大化するための条件として、議論に必要なすべての実験でキーが揃っていること
-
-- `results/<exp>/run_summary.json` を solver が出す。最初から出力する項目が決まればよいが、そうでない場合もある。あとで追加？
-
-
-
-##### `notes.md` AIに結果を記述させる。セクションを分けて人の考えも書く
-
-~~~
-# Experiment Notes: sor_omega_1p25
-
----
-
-## 1. AI Summary (Facts)
-(自動生成)
-metrics要約
-収束状況
-runtime
-異常有無
-解釈しない。
----
-
-## 2. AI Analysis (Evaluation)
-(自動生成)
-intentとの整合性
-次を必ず書かせる
-### Hypotheses 仮説候補
-- ...
-### Counterarguments 他実験との比較
-- ...
-### Minimal Next Experiment 次実験提案
-- exp_name: ...
-  change: ...
----
-
-## 3. Human Thoughts (Decision)
-(手書き)
-採用／却下
-次exp名
-投資判断
-疑問
----
-~~~
-
-
-
-#### `history_stats.json`
-
-ヒストリデータは生データの統計処理情報（特徴量）をjson化
-
-~~~
-{
-  "history_stats": {
-    "monotonic": false,
-    "oscillation_detected": true,
-    "diverged": true,
-    "initial_residual": 1.0,
-    "min_residual": 0.9640102,
-    "final_residual": 3.605399,
-    "convergence_rate_estimate": -0.12
-  }
-}
-
-~~~
-
-
-
-#### `run_summary.json`
-
-~~~
-{
-  "timestamp": "2026-02-14T09:46:01",
-  "config_path": "experiments/ssor_n128_omega1.8/config.yaml",
-  "script": "scripts/run_solver.jl",
-
-  "iterations": 162,
-  "runtime_sec": 2.5548958778381348,
-
-  "converged": false,
-  "residual_l2": "inf",
-  "error_l2": 4.391278058068776e146,
-  "error_max": 2.0418659267440394e149,
-  
-  "artifacts": {
-    "history": "history_ssor_nx128_ny128_nz128_steps162.txt"
-  }
-}
-~~~
-
-
-AGENT.mdに「AIに対する操作マニュアル」の内容を記述。コード開発の要件もあるので、セクションを分けて記述。
+仕様として、SOR＞RBSOR、SSOR>RBSSORとして、新たにSOR（ポイントSOR）とポイントSORによるSSORにすることを考えます。これらの反復法は、前処理にも適用します。仕様と設計、タスクを作成してください。

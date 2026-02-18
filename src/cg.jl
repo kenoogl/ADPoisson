@@ -1,12 +1,12 @@
 # cg.jl
 
 """
-    cg_solve_with_runtime(prob, config; precond=:none, omega_ssor=1.0, output_dir="results", bc_order=:spec)
+    cg_solve_with_runtime(prob, config; precond=:none, precond_iters=0, omega_ssor=1.0, output_dir="results", bc_order=:spec)
 
 Solve Poisson equation using PCG and return (Solution, runtime_s).
 """
 function cg_solve_with_runtime(prob::ProblemSpec, config::SolverConfig;
-                               precond::Symbol=:none, omega_ssor::Real=1.0,
+                               precond::Symbol=:none, precond_iters::Int=0, omega_ssor::Real=1.0,
                                output_dir::AbstractString="results", bc_order=:spec)
     sol = initialize_solution(config, prob)
     bc = boundary_from_prob(prob)
@@ -14,47 +14,51 @@ function cg_solve_with_runtime(prob::ProblemSpec, config::SolverConfig;
     compute_source!(f, prob, config)
     omega_t = convert(eltype(sol.u), omega_ssor)
     _, sol_out, runtime = cg_solve_with_runtime!(sol, f, bc, prob, config;
-                                                 precond=precond, omega_ssor=omega_t,
+                                                 precond=precond, precond_iters=precond_iters, omega_ssor=omega_t,
                                                  output_dir=output_dir, bc_order=bc_order)
     return sol_out, runtime
 end
 
 """
-    cg_solve(prob, config; precond=:none, omega_ssor=1.0, output_dir="results", bc_order=:spec)
+    cg_solve(prob, config; precond=:none, precond_iters=0, omega_ssor=1.0, output_dir="results", bc_order=:spec)
 
 Solve Poisson equation using PCG and return Solution.
 """
 function cg_solve(prob::ProblemSpec, config::SolverConfig;
-                  precond::Symbol=:none, omega_ssor::Real=1.0,
+                  precond::Symbol=:none, precond_iters::Int=0, omega_ssor::Real=1.0,
                   output_dir::AbstractString="results", bc_order=:spec)
     sol_out, _ = cg_solve_with_runtime(prob, config;
-                                       precond=precond, omega_ssor=omega_ssor,
+                                       precond=precond, precond_iters=precond_iters, omega_ssor=omega_ssor,
                                        output_dir=output_dir, bc_order=bc_order)
     return sol_out
 end
 
 """
-    cg_solve!(sol, f, bc, prob, config; precond=:none, omega_ssor=1.0, output_dir="results", bc_order=:spec)
+    cg_solve!(sol, f, bc, prob, config; precond=:none, precond_iters=0, omega_ssor=1.0, output_dir="results", bc_order=:spec)
 
 PCG solver with optional preconditioner.
 """
 function cg_solve!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions,
                    prob::ProblemSpec, config::SolverConfig;
-                   precond::Symbol=:none, omega_ssor::T=one(T),
+                   precond::Symbol=:none, precond_iters::Int=0, omega_ssor::T=one(T),
                    output_dir::AbstractString="results",
                    bc_order=:spec) where {T<:Real}
     converged, result, _ = cg_solve_with_runtime!(sol, f, bc, prob, config;
-                                                  precond=precond, omega_ssor=omega_ssor,
+                                                  precond=precond, precond_iters=precond_iters, omega_ssor=omega_ssor,
                                                   output_dir=output_dir, bc_order=bc_order)
     return converged, result
 end
 
 function cg_solve_with_runtime!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryConditions,
                                 prob::ProblemSpec, config::SolverConfig;
-                                precond::Symbol=:none, omega_ssor::T=one(T),
+                                precond::Symbol=:none, precond_iters::Int=0, omega_ssor::T=one(T),
                                 output_dir::AbstractString="results",
                                 bc_order=:spec) where {T<:Real}
-    precond === :ssor || precond === :none || error("precond must be :ssor or :none")
+    (precond === :none || precond === :ssor || precond === :rbssor) || error("precond must be :none, :ssor, or :rbssor")
+    iters = precond_iters > 0 ? precond_iters : (precond === :ssor ? 2 : (precond === :rbssor ? 1 : 0))
+    if precond !== :none
+        iters > 0 || error("precond-iters must be > 0 for preconditioned CG")
+    end
     u = sol.u
     r = similar(u)
     p = similar(u)
@@ -74,7 +78,11 @@ function cg_solve_with_runtime!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryCon
     @printf(history, "%d %.6e %.6e\n", 0, err_l2, r0 / denom)
 
     if precond === :ssor
-        ssor_precond!(z, r, bc0, config, prob; omega=omega_ssor)
+        ssor_precond!(z, r, bc0, config, prob; omega=omega_ssor, iters=iters)
+        copy_interior!(p, z, config)
+        rho = dot_interior(r, z, config)
+    elseif precond === :rbssor
+        rbssor_precond!(z, r, bc0, config, prob; omega=omega_ssor, iters=iters)
         copy_interior!(p, z, config)
         rho = dot_interior(r, z, config)
     else
@@ -106,7 +114,10 @@ function cg_solve_with_runtime!(sol::Solution{T}, f::Array{T,3}, bc::BoundaryCon
         end
 
         if precond === :ssor
-            ssor_precond!(z, r, bc0, config, prob; omega=omega_ssor)
+            ssor_precond!(z, r, bc0, config, prob; omega=omega_ssor, iters=iters)
+            rho_new = dot_interior(r, z, config)
+        elseif precond === :rbssor
+            rbssor_precond!(z, r, bc0, config, prob; omega=omega_ssor, iters=iters)
             rho_new = dot_interior(r, z, config)
         else
             copy_interior!(z, r, config)
@@ -150,34 +161,71 @@ end
 
 function ssor_precond!(z::Array{T,3}, r::Array{T,3}, bc0::BoundaryConditions,
                        config::SolverConfig, prob::ProblemSpec;
-                       omega::T=one(T)) where {T<:Real}
+                       omega::T=one(T), iters::Int=1) where {T<:Real}
     z .= zero(T)
-    dx, dy, dz = grid_spacing(config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz)
-    inv_dx2 = one(T) / (dx * dx)
-    inv_dy2 = one(T) / (dy * dy)
-    inv_dz2 = one(T) / (dz * dz)
-    diag = 2 * (inv_dx2 + inv_dy2 + inv_dz2)
-
-    # RBSSOR: forward R→B, backward B→R, forward B→R, backward R→B
-    # NOTE: order=:spec は ghost が隣接内点のみ依存のため、色ごとの再適用は不要。
-    #       order=:high を使う場合は ghost が複数内点に依存するため、
-    #       色ごとに境界更新するか、事前に :spec に固定すること。
-    apply_bc!(z, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
-    sor_sweep_color_rhs_forward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 0)
-    sor_sweep_color_rhs_forward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 1)
-
-    apply_bc!(z, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
-    sor_sweep_color_rhs_backward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 1)
-    sor_sweep_color_rhs_backward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 0)
-
-    apply_bc!(z, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
-    sor_sweep_color_rhs_forward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 1)
-    sor_sweep_color_rhs_forward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 0)
-
-    apply_bc!(z, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
-    sor_sweep_color_rhs_backward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 0)
-    sor_sweep_color_rhs_backward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 1)
+    inv_dx2, inv_dy2, inv_dz2, diag = _sor_diag_terms(config, prob)
+    for _ in 1:iters
+        apply_bc!(z, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
+        sor_sweep_point_rhs_forward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega)
+        apply_bc!(z, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
+        sor_sweep_point_rhs_backward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega)
+    end
     return z
+end
+
+function rbssor_precond!(z::Array{T,3}, r::Array{T,3}, bc0::BoundaryConditions,
+                         config::SolverConfig, prob::ProblemSpec;
+                         omega::T=one(T), iters::Int=1) where {T<:Real}
+    z .= zero(T)
+    inv_dx2, inv_dy2, inv_dz2, diag = _sor_diag_terms(config, prob)
+    for _ in 1:iters
+        apply_bc!(z, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
+        sor_sweep_color_rhs_forward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 0)
+        sor_sweep_color_rhs_forward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 1)
+
+        apply_bc!(z, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
+        sor_sweep_color_rhs_backward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 1)
+        sor_sweep_color_rhs_backward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 0)
+
+        apply_bc!(z, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
+        sor_sweep_color_rhs_forward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 1)
+        sor_sweep_color_rhs_forward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 0)
+
+        apply_bc!(z, bc0, 0, config; Lx=prob.Lx, Ly=prob.Ly, Lz=prob.Lz, order=:spec)
+        sor_sweep_color_rhs_backward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 0)
+        sor_sweep_color_rhs_backward!(z, r, config, inv_dx2, inv_dy2, inv_dz2, diag, omega, 1)
+    end
+    return z
+end
+
+function sor_sweep_point_rhs_forward!(u::Array{T,3}, r::Array{T,3}, config::SolverConfig,
+                                      inv_dx2::T, inv_dy2::T, inv_dz2::T, diag::T,
+                                      omega::T) where {T<:Real}
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(u, config)
+    @inbounds for k in k_lo:k_hi, j in j_lo:j_hi, i in i_lo:i_hi
+        rhs = -r[i, j, k]
+        sum_nb = (u[i+1, j, k] + u[i-1, j, k]) * inv_dx2 +
+                 (u[i, j+1, k] + u[i, j-1, k]) * inv_dy2 +
+                 (u[i, j, k+1] + u[i, j, k-1]) * inv_dz2
+        u_star = (sum_nb - rhs) / diag
+        u[i, j, k] = (one(T) - omega) * u[i, j, k] + omega * u_star
+    end
+    return u
+end
+
+function sor_sweep_point_rhs_backward!(u::Array{T,3}, r::Array{T,3}, config::SolverConfig,
+                                       inv_dx2::T, inv_dy2::T, inv_dz2::T, diag::T,
+                                       omega::T) where {T<:Real}
+    i_lo, i_hi, j_lo, j_hi, k_lo, k_hi = interior_bounds(u, config)
+    @inbounds for k in k_hi:-1:k_lo, j in j_hi:-1:j_lo, i in i_hi:-1:i_lo
+        rhs = -r[i, j, k]
+        sum_nb = (u[i+1, j, k] + u[i-1, j, k]) * inv_dx2 +
+                 (u[i, j+1, k] + u[i, j-1, k]) * inv_dy2 +
+                 (u[i, j, k+1] + u[i, j, k-1]) * inv_dz2
+        u_star = (sum_nb - rhs) / diag
+        u[i, j, k] = (one(T) - omega) * u[i, j, k] + omega * u_star
+    end
+    return u
 end
 
 function sor_sweep_color_rhs_forward!(u::Array{T,3}, r::Array{T,3}, config::SolverConfig,
@@ -187,12 +235,12 @@ function sor_sweep_color_rhs_forward!(u::Array{T,3}, r::Array{T,3}, config::Solv
     @inbounds for k in k_lo:k_hi, j in j_lo:j_hi
         i_start = i_lo + ((color - ((i_lo + j + k) & 1)) & 1)
         for i in i_start:2:i_hi
-        rhs = -r[i, j, k]
-        sum_nb = (u[i+1, j, k] + u[i-1, j, k]) * inv_dx2 +
-                 (u[i, j+1, k] + u[i, j-1, k]) * inv_dy2 +
-                 (u[i, j, k+1] + u[i, j, k-1]) * inv_dz2
-        u_star = (sum_nb - rhs) / diag
-        u[i, j, k] = (one(T) - omega) * u[i, j, k] + omega * u_star
+            rhs = -r[i, j, k]
+            sum_nb = (u[i+1, j, k] + u[i-1, j, k]) * inv_dx2 +
+                     (u[i, j+1, k] + u[i, j-1, k]) * inv_dy2 +
+                     (u[i, j, k+1] + u[i, j, k-1]) * inv_dz2
+            u_star = (sum_nb - rhs) / diag
+            u[i, j, k] = (one(T) - omega) * u[i, j, k] + omega * u_star
         end
     end
 end
@@ -204,12 +252,12 @@ function sor_sweep_color_rhs_backward!(u::Array{T,3}, r::Array{T,3}, config::Sol
     @inbounds for k in k_hi:-1:k_lo, j in j_hi:-1:j_lo
         i_start = i_hi - ((i_hi + j + k - color) & 1)
         for i in i_start:-2:i_lo
-        rhs = -r[i, j, k]
-        sum_nb = (u[i+1, j, k] + u[i-1, j, k]) * inv_dx2 +
-                 (u[i, j+1, k] + u[i, j-1, k]) * inv_dy2 +
-                 (u[i, j, k+1] + u[i, j, k-1]) * inv_dz2
-        u_star = (sum_nb - rhs) / diag
-        u[i, j, k] = (one(T) - omega) * u[i, j, k] + omega * u_star
+            rhs = -r[i, j, k]
+            sum_nb = (u[i+1, j, k] + u[i-1, j, k]) * inv_dx2 +
+                     (u[i, j+1, k] + u[i, j-1, k]) * inv_dy2 +
+                     (u[i, j, k+1] + u[i, j, k-1]) * inv_dz2
+            u_star = (sum_nb - rhs) / diag
+            u[i, j, k] = (one(T) - omega) * u[i, j, k] + omega * u_star
         end
     end
 end

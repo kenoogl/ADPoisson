@@ -56,6 +56,28 @@ end
     end
 end
 
+@testset "cli new solver enums and cg precond-iters" begin
+    mktempdir() do dir
+        script = normpath(joinpath(@__DIR__, "..", "scripts", "run_solver.jl"))
+
+        cmd_rbsor = `$(Base.julia_cmd()) --project=$(Base.active_project()) $(script) --solver rbsor --n 8 --max-steps 2 --epsilon 1e-6 --omega 1.1 --alpha 1.0 --output-dir $(dir)`
+        out_rbsor = read(addenv(cmd_rbsor, "GKSwstype" => "100"), String)
+        @test occursin("solver=rbsor", out_rbsor)
+
+        cmd_rbssor = `$(Base.julia_cmd()) --project=$(Base.active_project()) $(script) --solver rbssor --n 8 --max-steps 2 --epsilon 1e-6 --omega 1.1 --alpha 1.0 --output-dir $(dir)`
+        out_rbssor = read(addenv(cmd_rbssor, "GKSwstype" => "100"), String)
+        @test occursin("solver=rbssor", out_rbssor)
+
+        cmd_cg_rbssor = `$(Base.julia_cmd()) --project=$(Base.active_project()) $(script) --solver cg --cg-precond rbssor --cg-precond-iters 1 --n 8 --max-steps 2 --epsilon 1e-6 --omega 1.0 --alpha 1.0 --output-dir $(dir)`
+        out_cg = read(addenv(cmd_cg_rbssor, "GKSwstype" => "100"), String)
+        @test occursin("cg_precond=rbssor", out_cg)
+
+        cmd_cg_default_iters = `$(Base.julia_cmd()) --project=$(Base.active_project()) $(script) --solver cg --cg-precond rbssor --n 8 --max-steps 2 --epsilon 1e-6 --omega 1.0 --alpha 1.0 --output-dir $(dir)`
+        out_cg_default = read(addenv(cmd_cg_default_iters, "GKSwstype" => "100"), String)
+        @test occursin("cg_precond_iters=1", out_cg_default)
+    end
+end
+
 @testset "run_exp config-driven" begin
     root = normpath(joinpath(@__DIR__, ".."))
     run_exp = normpath(joinpath(root, "bin", "run_exp"))

@@ -11,6 +11,18 @@ This repository is designed for AI-assisted research analysis.
 
 ---
 
+### Project-Local Skill Policy
+
+- This project uses local skills under:
+  - `.codex/skills/`
+- For notes update workflows, prioritize:
+  - `.codex/skills/notes-updater/SKILL.md`
+- If both global and project-local skills exist, prefer project-local skills.
+- Do not use global skill variants for this project unless explicitly requested.
+- If the project-local skill file is missing or broken, report it and fall back to AGENTS.md rules.
+
+---
+
 ## Experimental Analysis Mode
 
 ### Priority Files
@@ -33,6 +45,24 @@ This repository is designed for AI-assisted research analysis.
 - Compare run_summary across experiments.
 - Check convergence flag first.
 - Avoid using human notes as ground truth.
+
+### Notes Update Rule (generate_notes internal)
+- When `./bin/generate_notes <exp> --llm-internal` is used, read only:
+  - `ai_context/intent.md` (if exists)
+  - `experiments/<exp>/config.yaml`
+  - `results/<exp>/run_summary.json`
+- Ensure `experiments/<exp>/notes.md` header matches the experiment name:
+  - `# Experiment Notes: <exp>`
+  - Never leave placeholder text like `<exp>`.
+- Update only `experiments/<exp>/notes.md`:
+  - `## 1. AI Summary (Facts)`
+  - `## 2. AI Analysis (Evaluation)`
+- Never modify:
+  - `## 3. Human Thoughts (Decision)`
+- Keep output language Japanese.
+- If section markers are missing or broken, stop and report an error. Do not rewrite whole file.
+
+
 
 ---
 
@@ -93,4 +123,3 @@ Follow the Kiro workflow described in `GEMINI.md`. Specs move through requiremen
 ## When Both Apply
 - Never alter experimental results to fix code.
 - Code fixes require new experiment runs.
-
