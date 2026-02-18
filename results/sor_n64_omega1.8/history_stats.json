@@ -1,0 +1,13 @@
+{
+  "history_stats": {
+    "monotonic": false,
+    "oscillation_detected": true,
+    "converged": true,
+    "iterations": 595,
+    "runtime_sec": 1.4620099067687988,
+    "initial_residual": 1.0,
+    "min_residual": 9.938878e-9,
+    "final_residual": 9.938878e-9,
+    "convergence_rate_estimate": 0.028874179199572494
+  }
+}

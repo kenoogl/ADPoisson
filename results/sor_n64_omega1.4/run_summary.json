@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-02-18T14:35:13",
+  "config_path": "experiments/sor_n64_omega1.4/config.yaml",
+  "script": "scripts/run_solver.jl",
+
+  "iterations": 2366,
+  "runtime_sec": 5.711090087890625,
+
+  "converged": true,
+  "residual_l2": "9.983918e-9",
+  "error_l2": 0.00011120621968271992,
+  "error_max": 0.0005704511028626902,
+  "artifacts": {
+    "history": "history_sor_nx64_ny64_nz64_steps2366.txt"
+  }
+}

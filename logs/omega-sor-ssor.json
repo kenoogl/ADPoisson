@@ -1,0 +1,23 @@
+{
+  "run_id": "omega-sor-ssor",
+  "note": "This file is overwritten on each run. Git history stores past executions.",
+  "timestamp": "2026-02-18T15:27:38+09:00",
+  "project": {
+    "commit": "6d8aae3",
+    "dirty": true
+  },
+  "framework": {
+    "commit": "none",
+    "dirty": none
+  },
+  "execution": {
+    "entrypoint": "bin/run_exp",
+    "command": "julia --project scripts/collect_omega_runs.jl  --config experiments/omega-sor-ssor/config.yaml"
+  },
+  "inputs": {
+    "config": "experiments/omega-sor-ssor/config.yaml"
+  },
+  "outputs": {
+    "results_dir": "results/omega-sor-ssor"
+  }
+}

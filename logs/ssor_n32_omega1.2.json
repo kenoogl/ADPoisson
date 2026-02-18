@@ -1,0 +1,23 @@
+{
+  "run_id": "ssor_n32_omega1.2",
+  "note": "This file is overwritten on each run. Git history stores past executions.",
+  "timestamp": "2026-02-18T15:11:51+09:00",
+  "project": {
+    "commit": "6d8aae3",
+    "dirty": true
+  },
+  "framework": {
+    "commit": "none",
+    "dirty": none
+  },
+  "execution": {
+    "entrypoint": "./bin/run_exp",
+    "command": "julia --project scripts/run_solver.jl --config experiments/ssor_n32_omega1.2/config.yaml"
+  },
+  "inputs": {
+    "config": "experiments/ssor_n32_omega1.2/config.yaml"
+  },
+  "outputs": {
+    "results_dir": "results/ssor_n32_omega1.2"
+  }
+}

@@ -1,0 +1,15 @@
+experiment:
+  name: omega-sor-ssor
+  description: sor/ssor omega variation
+
+output:
+  results_dir: results/omega-sor-ssor
+  save_residual_history: true
+
+execution:
+  command: >
+    julia --project scripts/collect_omega_runs.jl 
+    --config experiments/omega-sor-ssor/config.yaml
+
+postprocess:
+  commands: []
